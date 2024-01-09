@@ -1,0 +1,4 @@
+requests
+starknet-py>=0.18.3
+toml
+websockets

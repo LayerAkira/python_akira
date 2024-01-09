@@ -1,0 +1,36 @@
+node_url = "https://starknet-testnet.blastapi.io/c973c229-c997-4595-b9ed-0127335f467c"
+exchange_address = '0x068d20e2106c0bf947632893283ea6e29186f39aa25c0441f03c21b0f8418ce7'
+http = 'http://localhost:8080'
+wss = 'ws://localhost:8888/ws'
+gas_oracle_skew_multiplier = 1.25
+is_testnet = true
+verbose = true
+
+trading_account = {account_address ='place account address', public_key='place pub key', private_key='place pk'}
+
+[[gas_action]]
+safe = true
+action = 'swap'
+steps = 150
+
+[[gas_action]]
+safe = true
+action = 'withdraw'
+steps = 150
+
+# ERC tokens definitons
+[[ERC20]]
+symbol = "ETH"
+address = "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
+decimals = 18
+
+[[ERC20]]
+symbol = "USDC"
+address = "0x5a643907b9a4bc6a55e9069c4fd5fd1f5c79a22470690f75556c4736e34426"
+decimals = 6
+
+[[ERC20]]
+symbol = "USDT"
+address = "0x0386e8d061177f19b3b485c20e31137e6f6bc497cc635ccdfcab96fadf5add6a"
+decimals = 6
+
