@@ -3,6 +3,7 @@ from typing import Dict, Optional, List, Union
 
 from aiohttp import ClientSession
 from starknet_py.hash.utils import message_signature
+from starknet_py.utils.typed_data import TypedData
 
 from LayerAkira.src.Hasher import SnHasher
 from LayerAkira.src.OrderSerializer import SimpleOrderSerializer
@@ -17,6 +18,16 @@ from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, TableLe
     UserInfo, BBO, \
     OrderStatus, OrderStateInfo
 from LayerAkira.src.common.common import Result
+
+
+def get_typed_data(message: int, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
+    return TypedData.from_dict(
+        {"domain": {"name": name, "chainId": chain_id, "version": version},
+         "types": {
+             "StarkNetDomain": [{"name": "name", "type": "felt"},
+                                {"name": "chainId", "type": "felt"}, {"name": "version", "type": "felt"}],
+             "Message": [{"name": "message", "type": "felt"}],
+         }, "primaryType": "Message", "message": {"message": message}})
 
 
 class AsyncApiHttpClient:
@@ -46,14 +57,15 @@ class AsyncApiHttpClient:
     async def close(self):
         await self._http.close()
 
-    async def issue_jwt(self, signer: ContractAddress, pk: str) -> Result[str]:
-        url = f'{self._http_host}/sign/request_sign_data?user={signer}'
+    async def issue_jwt(self, signer: ContractAddress, pk: str, account: ContractAddress, chain_id: int) -> Result[str]:
+        url = f'{self._http_host}/sign/request_sign_data?user={signer}&account={account}'
         msg = await self._get_query(url)
         if msg.data is None: return msg
 
         url = f'{self._http_host}/sign/auth'
-        return await self._post_query(url, {'msg': int(msg.data),
-                                            'signature': list(message_signature(int(msg.data), int(pk, 16)))})
+        msg_hash = get_typed_data(msg.data, chain_id).message_hash(account.as_int())
+        return await self._post_query(url, {'msg': msg.data,
+                                            'signature': list(message_signature(msg_hash, int(pk, 16)))})
 
     async def query_gas_price(self, jwt: str) -> Result[int]:
         return await self._get_query(f'{self._http_host}/gas/price', jwt)

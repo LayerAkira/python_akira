@@ -274,7 +274,7 @@ class JointHttpClient:
     async def issue_jwt(self, acc: ContractAddress) -> Result[str]:
         signer = ContractAddress(self._address_to_account[acc].signer.public_key)
         pk = self._signer_key_to_pk[signer]
-        jwt_result = await self._api_client.issue_jwt(signer, pk)
+        jwt_result = await self._api_client.issue_jwt(signer, pk, acc, self._chain.value)
         if jwt_result.data is None: return jwt_result
         self._signer_key_to_jwt[signer] = jwt_result.data
         return jwt_result
