@@ -16,7 +16,7 @@ from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.Requests import Withdraw
 from LayerAkira.src.common.StarknetEntities import AccountExecutor, StarknetSmartContract
 from LayerAkira.src.common.common import Result
-from abi import core_abi, router_abi, executor_abi
+from LayerAkira.src.abi import core_abi, router_abi, executor_abi
 
 T = TypeVar("T")
 

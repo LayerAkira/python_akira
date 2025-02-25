@@ -9,3 +9,6 @@ class ERC20Token(str, Enum):
     AETH = 'AETH'
     AUSDC = 'AUSDC'
     AUSDT = 'AUSDT'
+
+
+TEST_TOKENS = [ERC20Token.AUSDC, ERC20Token.AUSDT, ERC20Token.AETH,]

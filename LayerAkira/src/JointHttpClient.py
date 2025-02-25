@@ -1,5 +1,6 @@
 import datetime
 import logging
+import time
 from collections import defaultdict
 from typing import Dict, Tuple, Optional, DefaultDict, List, Union
 
@@ -14,16 +15,19 @@ from LayerAkira.src.AkiraExchangeClient import AkiraExchangeClient
 from LayerAkira.src.ERC20Client import ERC20Client
 from LayerAkira.src.HttpClient import AsyncApiHttpClient
 from LayerAkira.src.common.ContractAddress import ContractAddress
-from LayerAkira.src.common.ERC20Token import ERC20Token
+from LayerAkira.src.common.ERC20Token import ERC20Token, TEST_TOKENS
+from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, build_order_calldata
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
+from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall, HumanReadableCall, Side
 from LayerAkira.src.common.Requests import Withdraw, Order, OrderFlags, STPMode, Quantity, Constraints, SpotTicker
 from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, Snapshot, UserInfo, BBO
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import Result
 from LayerAkira.src.common.common import precise_to_price_convert, random_int
-from LayerAkira.src.common.constants import ZERO_ADDRESS
+from LayerAkira.src.common.constants import ZERO_ADDRESS, TOKEN_APPROVE_SELECTOR, TEST_TOKEN_APPROVE_SELECTOR, \
+    PLACE_TAKER_ORDER_SELECTOR
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher, AppDomain
-from common.Requests import SignScheme
+from LayerAkira.src.hasher.Snip9Formatter import Snip9Formatter
 
 
 class JointHttpClient:
@@ -39,6 +43,7 @@ class JointHttpClient:
                  akira_exchange_client: AkiraExchangeClient,
                  core_address: ContractAddress,
                  executor_address: ContractAddress,
+                 invoker_address: ContractAddress,
                  erc_to_addr: Dict[ERC20Token, ContractAddress],
                  token_to_decimals: Dict[ERC20Token, int],
                  chain=StarknetChainId.SEPOLIA,
@@ -65,10 +70,13 @@ class JointHttpClient:
         self._client, self._chain, self._gas_multiplier = node_client, chain, gas_multiplier
         self._token_to_decimals = token_to_decimals
         self._executor_address = executor_address
+        self._invoker_address = invoker_address
         self._core_address = core_address
 
         self._tokens_to_addr: Dict[ERC20Token, ContractAddress] = erc_to_addr
         self._hasher = SnTypedPedersenHasher(erc_to_addr, AppDomain(chain.value), core_address, executor_address)
+
+        self._snip9_formatter = Snip9Formatter(akira_exchange_client, erc_to_addr)
 
         self._address_to_account: Dict[ContractAddress, Account] = {}
         self._tokens_to_erc: Dict[ERC20Token, ERC20Client] = {}
@@ -344,33 +352,58 @@ class JointHttpClient:
         jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
         return await self._api_client.get_snapshot(jwt, base, quote, ecosystem_book)
 
-    async def place_order(self, acc: ContractAddress, ticker: TradedPair, px: int, qty_base: int, qty_quote: int,
-                          side: str, type: str,
-                          post_only: bool, full_fill: bool,
-                          best_lvl: bool, ecosystem: bool, maker: ContractAddress, gas_fee: GasFee,
-                          router_fee: Optional[FixedFee] = None, router_signer: Optional[ContractAddress] = None,
-                          stp: int = 0, external_funds=False, min_receive_amount=0, apply_fixed_fees_to_receipt=True) -> \
+    async def place_order(self,
+                          acc: ContractAddress,
+                          ticker: TradedPair,
+                          px: int,
+                          qty_base: int,
+                          qty_quote: int,
+                          side: str,
+                          type: str,
+                          post_only: bool,
+                          full_fill: bool,
+                          best_lvl: bool,
+                          ecosystem: bool,
+                          maker: ContractAddress,
+                          gas_fee: GasFee,
+                          router_fee: Optional[FixedFee] = None,
+                          router_signer: Optional[ContractAddress] = None,
+                          stp: int = 0,
+                          external_funds=False,
+                          min_receive_amount=0,
+                          apply_fixed_fees_to_receipt=True) -> \
             Result[str]:
         info = self._trading_acc_to_user_info[acc]
 
         order_flags = OrderFlags(full_fill, best_lvl, post_only, side == 'SELL', type == 'MARKET', ecosystem,
                                  external_funds=external_funds)
 
-        order = await self._spawn_order(acc, px=px, qty_base=qty_base, qty_quote=qty_quote, maker=maker,
-                                        order_flags=order_flags, ticker=ticker,
-                                        fee=OrderFee(
-                                            FixedFee(self.fee_recipient, *info.fees[ticker],
-                                                     apply_fixed_fees_to_receipt),
-                                            FixedFee(ZERO_ADDRESS, 0, 0,
-                                                     apply_fixed_fees_to_receipt) if router_fee is None else router_fee,
-                                            gas_fee, ), nonce=info.nonce,
-                                        base_asset=10 ** self._token_to_decimals[ticker.base],
-                                        router_signer=router_signer if router_signer is not None else ZERO_ADDRESS,
-                                        stp=stp, min_receive_amount=min_receive_amount
-                                        )
+        order = await self._spawn_order(
+            acc, px=px, qty_base=qty_base, qty_quote=qty_quote, maker=maker,
+            order_flags=order_flags, ticker=ticker,
+            fee=OrderFee(
+                FixedFee(self.fee_recipient, *info.fees[ticker],
+                         apply_fixed_fees_to_receipt),
+                FixedFee(ZERO_ADDRESS, 0, 0,
+                         apply_fixed_fees_to_receipt) if router_fee is None else router_fee,
+                gas_fee, ), nonce=info.nonce,
+            base_asset=10 ** self._token_to_decimals[ticker.base],
+            router_signer=router_signer if router_signer is not None else ZERO_ADDRESS,
+            stp=stp, min_receive_amount=min_receive_amount,
+        )
+
         if order.data is None:
             logging.warning(f'Failed to spawn order {order}')
             return order
+
+        snip_9_calldata = self._spawn_snip_9_calldata(
+            order=order.data,
+        )
+
+        if snip_9_calldata is not None:
+            await self._sign_snip_9(acc, order)
+            order.data.snip_9_calldata = snip_9_calldata
+
         jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
         return await self._api_client.place_order(jwt, order.data)
 
@@ -441,3 +474,79 @@ class JointHttpClient:
         order.sign = list(message_signature(order_hash, int(pk, 16)))
 
         return Result(order)
+
+    async def _spawn_snip_9_calldata(self,
+                                     order: Order,
+                                     valid_since_now_seconds=60 * 5
+                                     ) -> Optional[ExecuteOutsideCall]:
+        calls = await self._spawn_snip_9_calls(
+            order=order
+        )
+        account = self._address_to_account[order.maker]
+        nonce = await account.get_nonce()
+
+        signature = [0, 0]
+
+        snip_9_calldata = ExecuteOutsideCall(
+            caller=self._invoker_address,
+            calls=calls,
+            execute_after=int(time.time()) - valid_since_now_seconds,
+            execute_before=int(time.time()) + valid_since_now_seconds,
+            nonce=nonce,
+            signature=signature,
+            maker=order.maker,
+            version=OutsideExecutionVersion.V1.value
+        )
+
+        return snip_9_calldata
+
+    async def _spawn_snip_9_calls(self,
+                                  order: Order,
+                                  ) -> List[HumanReadableCall]:
+
+        calls = []
+
+        spending_token = order.ticker.base if order.side == 'SELL' else order.ticker.quote
+
+        if spending_token == order.ticker.base:
+            spending_amount = int(order.qty.base_qty)
+        else:
+            qty = (order.qty.base_qty * order.price) / self._token_to_decimals[order.ticker.base]
+            spending_amount = int(qty)
+
+        erc_address = self._tokens_to_addr[spending_token]
+
+        approve_call = HumanReadableCall(
+            to=erc_address,
+            selector=TEST_TOKEN_APPROVE_SELECTOR if spending_token in TEST_TOKENS else TOKEN_APPROVE_SELECTOR,
+            args=[self._executor_address, hex(spending_amount)],
+            kwargs={}
+        )
+
+        calls.append(approve_call)
+
+        place_order_call_data = build_order_calldata(order, self._tokens_to_addr)
+
+        place_order_call = HumanReadableCall(
+            to=self._executor_address,
+            selector=PLACE_TAKER_ORDER_SELECTOR,
+            args=[],
+            kwargs=place_order_call_data,
+        )
+
+        calls.append(place_order_call)
+
+        return calls
+
+    async def _sign_snip_9(self, acc: ContractAddress, order: Order):
+
+        om = self._snip9_formatter.get_snip9_order_match(order)
+
+        hash = self._hasher.hash(om)
+
+        signer_pub_key = ContractAddress(self._address_to_account[acc].signer.public_key)
+        pk = self._signer_key_to_pk[signer_pub_key]
+
+        signature = message_signature(hash, int(pk, 16))
+
+        order.snip9_calldata.signature = signature

@@ -1,8 +1,8 @@
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, Optional
 
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import FixedFee, GasFee
-from LayerAkira.src.common.Requests import Order
+from LayerAkira.src.common.Requests import Order, ExecuteOutsideCall
 from LayerAkira.src.common.common import precise_from_price_to_str_convert
 
 
@@ -29,12 +29,34 @@ def serialize_gas_fee(gas_fee: GasFee, erc_to_decimals, base_token: ERC20Token =
     }
 
 
+def serialize_snip9_calldata(sinp_9_calldata: Optional[ExecuteOutsideCall]) -> Optional[Dict]:
+    if sinp_9_calldata is None:
+        return None
+
+    return {
+        'caller': sinp_9_calldata.caller.as_str(),
+        'calls': [{
+            'to': call.to.as_str(),
+            'selector': call.selector,
+            'args': call.args,
+            'kwargs': call.kwargs
+        } for call in sinp_9_calldata.calls],
+        'execute_after': sinp_9_calldata.execute_after,
+        'execute_before': sinp_9_calldata.execute_before,
+        'nonce': sinp_9_calldata.nonce,
+        'signer_address': sinp_9_calldata.maker.as_str(),
+        'version': sinp_9_calldata.version,
+        'signature': list(sinp_9_calldata.signature),
+        '_hash': sinp_9_calldata._hash if sinp_9_calldata._hash is not None else sinp_9_calldata.hash,
+    }
+
+
 class SimpleOrderSerializer:
     def __init__(self, erc_to_decimals: Dict[ERC20Token, int]):
         self._erc_to_decimals = erc_to_decimals
 
     def serialize(self, data: Order):
-        return {
+        result = {
             'maker': data.maker.as_str(),
             'price': precise_from_price_to_str_convert(data.price, self._erc_to_decimals[data.ticker.quote]),
             'qty': {
@@ -51,7 +73,9 @@ class SimpleOrderSerializer:
                 'stp': data.constraints.stp.value,
                 'duration_valid': data.constraints.duration_valid,
                 'min_receive_amount': precise_from_price_to_str_convert(data.constraints.min_receive_amount,
-                                                                        self._erc_to_decimals[data.ticker.quote] if data.flags.is_sell_side else self._erc_to_decimals[data.ticker.base]
+                                                                        self._erc_to_decimals[
+                                                                            data.ticker.quote] if data.flags.is_sell_side else
+                                                                        self._erc_to_decimals[data.ticker.base]
                                                                         )
             },
             'flags': {
@@ -75,3 +99,9 @@ class SimpleOrderSerializer:
             'source': data.source,
             'sign_scheme': data.sign_scheme.value,
         }
+
+        snip9_data = serialize_snip9_calldata(data.snip9_calldata)
+        if snip9_data is not None:
+            result['snip9_call'] = snip9_data
+
+        return result
