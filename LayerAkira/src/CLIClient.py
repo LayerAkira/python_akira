@@ -40,6 +40,7 @@ class CLIConfig:
     core_address: ContractAddress
     executor_address: ContractAddress
     router_address: ContractAddress
+    invoker_address: ContractAddress
     http: str
     wss: str
     tokens: List[ERC20Spec]
@@ -68,6 +69,7 @@ def parse_cli_cfg(file_path: str):
     return CLIConfig(data['node_url'], ContractAddress(data['core_address']),
                      ContractAddress(data['executor_address']),
                      ContractAddress(data['router_address']),
+                     ContractAddress(data['invoker_address']),
                      data['http'], data['wss'], tokens,
                      StarknetChainId.SEPOLIA if data['is_testnet']
                      else StarknetChainId.MAINNET, steps,
@@ -110,6 +112,7 @@ class CLIClient:
         self.exchange_client = JointHttpClient(node_client, api_client, contract_client,
                                                self.cli_cfg.core_address,
                                                self.cli_cfg.executor_address,
+                                               self.cli_cfg.invoker_address,
                                                erc_to_addr,
                                                self._erc_to_decimals,
                                                self.cli_cfg.chain_id,
@@ -312,8 +315,8 @@ class CLIClient:
                                             )
 
         elif command.startswith('place_snip9_taker_order'):
-            ticker, px, qty_base, side, type, min_receive_amount = args
-            min_receive_amount = str(min_receive_amount)
+            ticker, px, qty_base, side = args
+            min_receive_amount = str("0")
             base, quote = ticker.split('/')
             base, quote = ERC20Token(base), ERC20Token(quote)
             ecosystem = False
@@ -331,17 +334,15 @@ class CLIClient:
                 fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
             else:
                 fee = GAS_FEE_ACTION(client.gas_price, gas_fee_steps['swap'][ecosystem])
-
-            snip_9_calldata = self._get_snip9_calldata()
             return await client.place_order(trading_account, TradedPair(base, quote),
-                                            px, qty_base, qty_quote, side, type,
+                                            px, qty_base, qty_quote, side, "MARKET",
                                             False, False, False,
                                             ecosystem, trading_account,
                                             fee,
                                             stp=0, external_funds=external,
                                             min_receive_amount=min_receive_amount,
                                             apply_fixed_fees_to_receipt=apply_to_receipt_amount,
-                                            snip_9_calldata=snip_9_calldata
+                                            snip_9=True
                                             )
 
         elif command.startswith('cancel_order'):

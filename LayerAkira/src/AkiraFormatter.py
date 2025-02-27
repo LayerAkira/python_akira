@@ -50,6 +50,8 @@ class AkiraFormatter:
                     'min_receive_amount': order.constraints.min_receive_amount
                 },
                 'flags': self._prepare_order_flags(order.flags),
+                'source': order.source,
+                'sign_scheme': order.sign_scheme.value
             }
         }
 

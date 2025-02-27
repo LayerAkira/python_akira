@@ -1,11 +1,52 @@
+from dataclasses import dataclass
 from enum import Enum
-from typing import Tuple, Optional, Set, Dict
+from typing import Tuple, Optional, Set, Dict, Union, List
 
 from starknet_py.serialization import Uint256Serializer
 
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
-from LayerAkira.src.common.Requests import HumanReadableCall, Order, STPMode
+
+ECDSASignature = Tuple[int, int]
+ClientSignature = Union[Tuple[int, ...], ECDSASignature]
+
+
+@dataclass(frozen=True)
+class Call:
+    to: int
+    selector: int
+    calldata: List[int]
+
+
+@dataclass(frozen=True)
+class HumanReadableCall:
+    to: ContractAddress
+    selector: str
+    args: List[str]
+    kwargs: Dict[str, str]
+
+
+@dataclass
+class ExecuteOutsideCall:
+    """
+    Snip-9 support of execute outside functionality
+    Only applicable for external takers, not saved to database
+    """
+    caller: ContractAddress
+    calls: List[HumanReadableCall]  # without last call to our method placeOrder
+    execute_after: int
+    execute_before: int
+    nonce: int
+    signature: ClientSignature
+    maker: ContractAddress  # aka signer
+    version: str
+
+    def get_multicall(self, allowed_erc: Set[ContractAddress], core: ContractAddress, executor: ContractAddress) -> \
+            List[Tuple[Optional[Tuple[ContractAddress, Optional[int]]], Optional[str]]]:
+        calls = [format_human_readable_call(call, allowed_erc, core, executor) for call in self.calls]
+        if len([call for call in calls if call[0][0] == core]) > 1:
+            return [(None, 'Duplicate call to approve executor')]
+        return calls
 
 
 class OutsideExecutionVersion(Enum):
@@ -14,61 +55,50 @@ class OutsideExecutionVersion(Enum):
     V2 = "2"
 
 
-def validate_human_readable_call(
+def format_human_readable_call(
         call: HumanReadableCall, allowed_addresses: Set[ContractAddress],
         core: ContractAddress,
         executor: ContractAddress,
 ) -> Tuple[Optional[Tuple[ContractAddress, Optional[int]]], Optional[str]]:
-    """
-    Validates the call and ensures it meets the specified requirements.
-
-    Args:
-        call (HumanReadableCall): The call to validate.
-        allowed_addresses (Set[str]): A set of allowed `to` addresses.
-        executor (str): The expected recipient address for the exchange.
-
-    Returns:
-        tuple: (approved token, approved amount)/ (core_contract,None),None, in case of failure None, 'err msg'
-        @param core:
-    """
-    # Validate `to`
+    # V`to`
     if call.to not in allowed_addresses and call.to != core:
-        return None, f'Address {call.to} is not whitelisted in snip9'
+        raise ValueError(f'Address {call.to} is not whitelisted in snip9')
 
-    # Validate `selector`
+    # `selector`
     if call.selector != "approve" and (call.to == core and call.selector != 'grant_access_to_executor'):
-        return None, f'Selector {call.selector} is not whitelisted in snip9'
+        raise ValueError(f'Selector {call.selector} is not whitelisted in snip9')
     if call.to == core:
         if not (len(call.args) == 0 and len(call.kwargs) == 0):
-            return None, 'Grant access to executor have no args'
+            raise ValueError('Grant access to executor have no args')
         return (call.to, None), None
 
-    # Validate mutual exclusivity of `args` and `kwargs`
+    # mutual exclusivity of `args` and `kwargs`
     if bool(call.args) == bool(call.kwargs):  # Both defined or both empty
-        return None, 'Args and kwargs are exclusive in snip9'
+        raise ValueError('Args and kwargs are exclusive in snip9')
 
-    # Validate `args` format
+    # `args` format
     if call.args:
         if len(call.args) != 2:
-            return None, f'Approve must have exactly 2 arguments in snip9'
+            raise ValueError(f'Approve must have exactly 2 arguments in snip9')
         recipient, amount = ContractAddress(call.args[0]), call.args[1]
         if isinstance(amount, str):
             amount = int(amount, 16 if amount.startswith('0x') else 10)
     elif len(call.kwargs) != 2:
-        return None, f'Approve must have exactly 2 arguments in snip9'
+        raise ValueError(f'Approve must have exactly 2 arguments in snip9')
     else:
         recipient, amount = ContractAddress(call.kwargs.get('recipient', 0)), call.kwargs.get('amount', '0')
         if isinstance(amount, str):
             amount = int(amount, 16 if amount.startswith('0x') else 10)
 
     if recipient != executor:
-        return None, f'Approve recipient is not exchange {executor}'
+        raise ValueError(f'Approve recipient is not exchange {executor}')
     if amount == 0:
-        return None, f'Amount cannot be 0 in snip9'
+        raise ValueError(f'Amount cannot be 0 in snip9')
     return (call.to, amount), None
 
 
-def stp_enum_value(stp: STPMode) -> dict:
+def stp_enum_value(stp) -> dict:
+    from LayerAkira.src.common.Requests import STPMode
     if stp == STPMode.NONE:
         return {"NONE": {}}
     elif stp == STPMode.EXPIRE_TAKER:
@@ -81,7 +111,7 @@ def stp_enum_value(stp: STPMode) -> dict:
         raise ValueError(f"Unknown STPMode: {stp}")
 
 
-def build_order_calldata(order: Order, erc_to_address: Dict[ERC20Token, ContractAddress]) -> dict:
+def build_order_calldata(order, erc_to_address: Dict[ERC20Token, ContractAddress]) -> dict:
     u256_serde = Uint256Serializer()
     return {
         "maker": order.maker.as_str(),

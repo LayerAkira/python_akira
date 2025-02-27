@@ -16,9 +16,9 @@ from LayerAkira.src.ERC20Client import ERC20Client
 from LayerAkira.src.HttpClient import AsyncApiHttpClient
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token, TEST_TOKENS
-from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, build_order_calldata
+from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, build_order_calldata, HumanReadableCall
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
-from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall, HumanReadableCall, Side
+from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall
 from LayerAkira.src.common.Requests import Withdraw, Order, OrderFlags, STPMode, Quantity, Constraints, SpotTicker
 from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, Snapshot, UserInfo, BBO
 from LayerAkira.src.common.TradedPair import TradedPair
@@ -371,7 +371,9 @@ class JointHttpClient:
                           stp: int = 0,
                           external_funds=False,
                           min_receive_amount=0,
-                          apply_fixed_fees_to_receipt=True) -> \
+                          apply_fixed_fees_to_receipt=True,
+                          snip_9: bool = False
+                          ) -> \
             Result[str]:
         info = self._trading_acc_to_user_info[acc]
 
@@ -396,13 +398,14 @@ class JointHttpClient:
             logging.warning(f'Failed to spawn order {order}')
             return order
 
-        snip_9_calldata = self._spawn_snip_9_calldata(
-            order=order.data,
-        )
+        if snip_9:
+            snip9_calldata = await self._spawn_snip_9_calldata(
+                order=order.data,
+            )
 
-        if snip_9_calldata is not None:
-            await self._sign_snip_9(acc, order)
-            order.data.snip_9_calldata = snip_9_calldata
+            if snip9_calldata is not None:
+                order.data.snip9_calldata = snip9_calldata
+                await self._sign_snip_9(acc, order.data)
 
         jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
         return await self._api_client.place_order(jwt, order.data)
@@ -495,7 +498,7 @@ class JointHttpClient:
             nonce=nonce,
             signature=signature,
             maker=order.maker,
-            version=OutsideExecutionVersion.V1.value
+            version=OutsideExecutionVersion.V2.value
         )
 
         return snip_9_calldata
@@ -519,34 +522,37 @@ class JointHttpClient:
         approve_call = HumanReadableCall(
             to=erc_address,
             selector=TEST_TOKEN_APPROVE_SELECTOR if spending_token in TEST_TOKENS else TOKEN_APPROVE_SELECTOR,
-            args=[self._executor_address, hex(spending_amount)],
+            args=[self._executor_address.as_str(), hex(spending_amount)],
             kwargs={}
         )
 
         calls.append(approve_call)
 
-        place_order_call_data = build_order_calldata(order, self._tokens_to_addr)
-
-        place_order_call = HumanReadableCall(
-            to=self._executor_address,
-            selector=PLACE_TAKER_ORDER_SELECTOR,
-            args=[],
-            kwargs=place_order_call_data,
-        )
-
-        calls.append(place_order_call)
+        # place_order_call_data = build_order_calldata(order, self._tokens_to_addr)
+        #
+        # place_order_call = HumanReadableCall(
+        #     to=self._executor_address,
+        #     selector=PLACE_TAKER_ORDER_SELECTOR,
+        #     args=[],
+        #     kwargs=place_order_call_data,
+        # )
+        #
+        # calls.append(place_order_call)
 
         return calls
 
     async def _sign_snip_9(self, acc: ContractAddress, order: Order):
 
-        om = self._snip9_formatter.get_snip9_order_match(order)
+        snip_9_order_match = self._snip9_formatter.get_snip9_order_match(order)
 
-        hash = self._hasher.hash(om)
+        hash = self._hasher.hash(snip_9_order_match)
 
         signer_pub_key = ContractAddress(self._address_to_account[acc].signer.public_key)
         pk = self._signer_key_to_pk[signer_pub_key]
 
-        signature = message_signature(hash, int(pk, 16))
+        signature = list(message_signature(hash, int(pk, 16)))
 
         order.snip9_calldata.signature = signature
+
+        # # remove placeTakerOrder
+        # order.snip9_calldata.calls.pop()

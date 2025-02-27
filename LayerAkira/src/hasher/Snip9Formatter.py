@@ -21,7 +21,7 @@ class Snip9Formatter:
 
     def get_snip9_order_match(self, order: Order) -> Snip9OrderMatch:
         if order.snip9_calldata.maker != order.maker:
-            return f'Snip9 incorrect signer should be {order.maker}'
+            raise ValueError(f'Snip9 incorrect signer should be {order.maker}')
         subcalls = []
         for (addr, amount), _ in order.snip9_calldata.get_multicall(set(self._erc_to_addr.values()),
                                                                     self._akira.core_address,
