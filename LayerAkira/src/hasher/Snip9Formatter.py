@@ -19,7 +19,7 @@ class Snip9Formatter:
         self._erc_to_addr = erc_to_addr
         self._akira_formatter = AkiraFormatter(erc_to_addr)
 
-    def get_snip9_order_match(self, order: Order) -> Snip9OrderMatch:
+    def get_snip9_order_match(self, order: Order, router_sign) -> Snip9OrderMatch:
         if order.snip9_calldata.maker != order.maker:
             raise ValueError(f'Snip9 incorrect signer should be {order.maker}')
         subcalls = []
@@ -37,7 +37,7 @@ class Snip9Formatter:
 
         call = self._akira.executor.prepare_calldata('placeTakerOrder',
                                                      self._akira_formatter.prepare_order(order)['order'],
-                                                     order.router_sign,
+                                                     router_sign,
                                                      )
 
         snip9_order_match = Snip9OrderMatch(

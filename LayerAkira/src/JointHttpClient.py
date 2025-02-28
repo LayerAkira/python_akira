@@ -48,6 +48,7 @@ class JointHttpClient:
                  token_to_decimals: Dict[ERC20Token, int],
                  chain=StarknetChainId.SEPOLIA,
                  gas_multiplier=1.25,
+                 router_pk="",
                  verbose=False):
         """
 
@@ -95,6 +96,8 @@ class JointHttpClient:
         self._trading_acc_to_user_info: Dict[ContractAddress, UserInfo] = defaultdict(
             lambda: UserInfo(0, defaultdict(lambda: (0, 0)), defaultdict(lambda: (0, 0))))
 
+
+        self._router_pk = router_pk
         self._verbose = verbose
 
     async def handle_new_keys(self, acc_addr: ContractAddress, pub: ContractAddress, priv: str):
@@ -388,10 +391,10 @@ class JointHttpClient:
                          apply_fixed_fees_to_receipt),
                 FixedFee(ZERO_ADDRESS, 0, 0,
                          apply_fixed_fees_to_receipt) if router_fee is None else router_fee,
-                gas_fee, ), nonce=info.nonce,
+                gas_fee, ), nonce=info.nonce if info.nonce is not None else 0,
             base_asset=10 ** self._token_to_decimals[ticker.base],
             router_signer=router_signer if router_signer is not None else ZERO_ADDRESS,
-            stp=stp, min_receive_amount=min_receive_amount,
+            stp=stp, min_receive_amount=min_receive_amount, snip_9=snip_9
         )
 
         if order.data is None:
@@ -445,6 +448,10 @@ class JointHttpClient:
         pk = self._signer_key_to_pk[signer_pub_key]
         cur_ts = int(datetime.datetime.now().timestamp())
         year_seconds = 60 * 60 * 24 * 365
+        if kwargs['snip_9']:
+            sign_scheme = SignScheme.DIRECT
+        else:
+            sign_scheme = SignScheme.ECDSA if not kwargs['order_flags'].external_funds else SignScheme.ACCOUNT
         order = Order(kwargs['maker'], kwargs['px'],
                       Quantity(kwargs['qty_base'], kwargs['qty_quote'], kwargs['base_asset']),
                       kwargs['ticker'], kwargs['fee'],
@@ -455,7 +462,7 @@ class JointHttpClient:
                       random_int(),
                       kwargs['order_flags'],
                       (1, 1), (0, 0),
-                      sign_scheme=SignScheme.ECDSA if not kwargs['order_flags'].external_funds else SignScheme.ACCOUNT
+                      sign_scheme=sign_scheme
 
                       )
         if order.is_passive_order():
@@ -543,9 +550,12 @@ class JointHttpClient:
 
     async def _sign_snip_9(self, acc: ContractAddress, order: Order):
 
-        snip_9_order_match = self._snip9_formatter.get_snip9_order_match(order)
+        order_hash = self._hasher.hash(order)
+        router_sign = list(message_signature(order_hash, int(self._router_pk, 16)))
 
-        hash = self._hasher.hash(snip_9_order_match)
+        snip9_order_match = self._snip9_formatter.get_snip9_order_match(order, router_sign)
+
+        hash = self._hasher.hash(snip9_order_match)
 
         signer_pub_key = ContractAddress(self._address_to_account[acc].signer.public_key)
         pk = self._signer_key_to_pk[signer_pub_key]

@@ -49,6 +49,7 @@ class CLIConfig:
     gas_multiplier: float
     verbose: bool
     trading_account: Tuple[ContractAddress, ContractAddress, str]
+    router_pk: Optional[str] = None
 
 
 def parse_cli_cfg(file_path: str):
@@ -73,7 +74,8 @@ def parse_cli_cfg(file_path: str):
                      data['http'], data['wss'], tokens,
                      StarknetChainId.SEPOLIA if data['is_testnet']
                      else StarknetChainId.MAINNET, steps,
-                     data['gas_oracle_skew_multiplier'], data['verbose'], (acc, pub, pk))
+                     data['gas_oracle_skew_multiplier'], data['verbose'], (acc, pub, pk),
+                     data.get('router_pk'))
 
 
 class CLIClient:
@@ -117,6 +119,7 @@ class CLIClient:
                                                self._erc_to_decimals,
                                                self.cli_cfg.chain_id,
                                                self.cli_cfg.gas_multiplier,
+                                               self.cli_cfg.router_pk,
                                                verbose=self.cli_cfg.verbose)
 
         await self.exchange_client.init()
