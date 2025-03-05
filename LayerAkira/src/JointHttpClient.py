@@ -15,8 +15,8 @@ from LayerAkira.src.AkiraExchangeClient import AkiraExchangeClient
 from LayerAkira.src.ERC20Client import ERC20Client
 from LayerAkira.src.HttpClient import AsyncApiHttpClient
 from LayerAkira.src.common.ContractAddress import ContractAddress
-from LayerAkira.src.common.ERC20Token import ERC20Token, TEST_TOKENS
-from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, build_order_calldata, HumanReadableCall
+from LayerAkira.src.common.ERC20Token import ERC20Token
+from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, HumanReadableCall
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
 from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall
 from LayerAkira.src.common.Requests import Withdraw, Order, OrderFlags, STPMode, Quantity, Constraints, SpotTicker
@@ -24,8 +24,8 @@ from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, Snapsho
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import Result
 from LayerAkira.src.common.common import precise_to_price_convert, random_int
-from LayerAkira.src.common.constants import ZERO_ADDRESS, TOKEN_APPROVE_SELECTOR, TEST_TOKEN_APPROVE_SELECTOR, \
-    PLACE_TAKER_ORDER_SELECTOR
+from LayerAkira.src.common.constants import ZERO_ADDRESS, \
+    APPROVE_SELECTOR
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher, AppDomain
 from LayerAkira.src.hasher.Snip9Formatter import Snip9Formatter
 
@@ -493,7 +493,7 @@ class JointHttpClient:
             order=order
         )
         account = self._address_to_account[order.maker]
-        nonce = await account.get_nonce()
+        nonce = await account.get_outside_execution_nonce()
 
         signature = [0, 0]
 
@@ -528,7 +528,7 @@ class JointHttpClient:
 
         approve_call = HumanReadableCall(
             to=erc_address,
-            selector=TEST_TOKEN_APPROVE_SELECTOR if spending_token in TEST_TOKENS else TOKEN_APPROVE_SELECTOR,
+            selector=APPROVE_SELECTOR,
             args=[self._executor_address.as_str(), hex(spending_amount)],
             kwargs={}
         )

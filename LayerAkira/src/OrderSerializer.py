@@ -43,7 +43,7 @@ def serialize_snip9_calldata(sinp_9_calldata: Optional[ExecuteOutsideCall]) -> O
         } for call in sinp_9_calldata.calls],
         'execute_after': sinp_9_calldata.execute_after,
         'execute_before': sinp_9_calldata.execute_before,
-        'nonce': sinp_9_calldata.nonce,
+        'nonce': hex(sinp_9_calldata.nonce),
         'signer_address': sinp_9_calldata.maker.as_str(),
         'version': sinp_9_calldata.version,
         'signature': [hex(x) for x in sinp_9_calldata.signature],
