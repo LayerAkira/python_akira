@@ -15,6 +15,9 @@ class ContractAddress:
     def __str__(self):
         return self.as_str()
 
+    def __repr__(self):
+        return f"ContractAddress({hex(self._value)})"
+
     def __eq__(self, other):
         return self._value == other._value
 

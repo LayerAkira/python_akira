@@ -5,9 +5,9 @@ from starknet_py.utils.typed_data import TypedData
 
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
-from LayerAkira.src.common.Requests import Withdraw, CancelRequest, Order, IncreaseNonce
+from LayerAkira.src.common.Requests import Withdraw, CancelRequest, Order, IncreaseNonce, Snip9OrderMatch
 from LayerAkira.src.hasher.utils import withdraw_typed_data, get_order_typed_data, increase_nonce_typed_data, \
-    cancel_typed_data
+    cancel_typed_data, execute_outside_call_typed_data
 
 
 @dataclass
@@ -37,7 +37,14 @@ class SnTypedPedersenHasher:
             return data.message_hash(obj.maker.as_int())
         elif isinstance(obj, CancelRequest):
             data = cancel_typed_data(obj, self._erc_to_addr, self._domain)
+        elif isinstance(obj, Snip9OrderMatch):
+            data = execute_outside_call_typed_data(obj, self._domain, obj.outside_execute.version)
         else:
             raise Exception(f"Unknown object type {obj} {type(obj)}")
-        data = TypedData.from_dict(data)
-        return data.message_hash(obj.maker.as_int())
+
+        if isinstance(obj, Snip9OrderMatch):
+            d = TypedData.from_dict(data).message_hash(obj.maker.as_int())
+            return d
+        else:
+            data = TypedData.from_dict(data)
+            return data.message_hash(obj.maker.as_int())

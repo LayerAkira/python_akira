@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
+from LayerAkira.src.common.ExecuteOutside import ExecuteOutsideCall, Call
 from LayerAkira.src.common.FeeTypes import OrderFee, GasFee
 from LayerAkira.src.common.TradedPair import TradedPair
 
@@ -28,6 +29,7 @@ class SpotTicker:
     """
     pair: TradedPair
     is_ecosystem_book: bool
+
 
 @dataclass
 class OrderFlags:
@@ -103,6 +105,7 @@ class Order:
     router_sign: Tuple[int, int]
     source: str = 'layerakira'
     sign_scheme: SignScheme = None
+    snip9_calldata: Optional[ExecuteOutsideCall] = None
 
     def __post_init__(self):
         assert isinstance(self.maker, ContractAddress)
@@ -201,3 +204,19 @@ class Withdraw:
     def __post_init__(self):
         assert isinstance(self.maker, ContractAddress)
         assert isinstance(self.receiver, ContractAddress)
+
+
+@dataclass
+class Snip9OrderMatch:
+    """
+    msghash of following:
+    approve,
+    ...,
+    approve,
+    placeTakerOrder(order:order)
+
+    """
+    maker: ContractAddress
+    approves: List[Call]
+    place_order: Call
+    outside_execute: ExecuteOutsideCall

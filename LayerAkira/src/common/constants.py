@@ -1,7 +1,7 @@
 from LayerAkira.src.common.ContractAddress import ContractAddress
 
 ZERO_ADDRESS = ContractAddress(0)
-
+APPROVE_SELECTOR = "approve"
 
 ERC20ABI = [
             {

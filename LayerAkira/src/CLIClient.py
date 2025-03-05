@@ -40,6 +40,7 @@ class CLIConfig:
     core_address: ContractAddress
     executor_address: ContractAddress
     router_address: ContractAddress
+    invoker_address: ContractAddress
     http: str
     wss: str
     tokens: List[ERC20Spec]
@@ -48,6 +49,7 @@ class CLIConfig:
     gas_multiplier: float
     verbose: bool
     trading_account: Tuple[ContractAddress, ContractAddress, str]
+    router_pk: Optional[str] = None
 
 
 def parse_cli_cfg(file_path: str):
@@ -68,10 +70,12 @@ def parse_cli_cfg(file_path: str):
     return CLIConfig(data['node_url'], ContractAddress(data['core_address']),
                      ContractAddress(data['executor_address']),
                      ContractAddress(data['router_address']),
+                     ContractAddress(data['invoker_address']),
                      data['http'], data['wss'], tokens,
                      StarknetChainId.SEPOLIA if data['is_testnet']
                      else StarknetChainId.MAINNET, steps,
-                     data['gas_oracle_skew_multiplier'], data['verbose'], (acc, pub, pk))
+                     data['gas_oracle_skew_multiplier'], data['verbose'], (acc, pub, pk),
+                     data.get('router_pk'))
 
 
 class CLIClient:
@@ -104,15 +108,18 @@ class CLIClient:
                                           self.cli_cfg.executor_address)
         self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
         api_client = AsyncApiHttpClient(sn_hasher, lambda msg_hash, pk: message_signature(msg_hash, pk),
-                                        self._erc_to_decimals, self.cli_cfg.http, self.cli_cfg.verbose)
+                                        self._erc_to_decimals, self.cli_cfg.http,
+                                        verbose=self.cli_cfg.verbose)
 
         self.exchange_client = JointHttpClient(node_client, api_client, contract_client,
                                                self.cli_cfg.core_address,
                                                self.cli_cfg.executor_address,
+                                               self.cli_cfg.invoker_address,
                                                erc_to_addr,
                                                self._erc_to_decimals,
                                                self.cli_cfg.chain_id,
                                                self.cli_cfg.gas_multiplier,
+                                               self.cli_cfg.router_pk,
                                                verbose=self.cli_cfg.verbose)
 
         await self.exchange_client.init()
@@ -308,6 +315,37 @@ class CLIClient:
                                             stp=int(stp), external_funds=external,
                                             min_receive_amount=min_receive_amount,
                                             apply_fixed_fees_to_receipt=apply_to_receipt_amount
+                                            )
+
+        elif command.startswith('place_snip9_taker_order'):
+            ticker, px, qty_base, side = args
+            min_receive_amount = str("0")
+            base, quote = ticker.split('/')
+            base, quote = ERC20Token(base), ERC20Token(quote)
+            ecosystem = False
+            external = True
+            px = precise_to_price_convert(px, self._erc_to_decimals[quote])
+            qty_base = precise_to_price_convert(qty_base, self._erc_to_decimals[base])
+            qty_quote = precise_to_price_convert("0", self._erc_to_decimals[quote])
+            min_receive_amount = precise_to_price_convert(min_receive_amount,
+                                                          self._erc_to_decimals[base] if side == 'BUY'
+                                                          else self._erc_to_decimals[quote])
+            apply_to_receipt_amount = True
+            gas_token = base if side == 'BUY' else quote
+            if gas_token != ERC20Token.STRK:
+                rate = await client.get_conversion_rate(trading_account, gas_token)
+                fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
+            else:
+                fee = GAS_FEE_ACTION(client.gas_price, gas_fee_steps['swap'][ecosystem])
+            return await client.place_order(trading_account, TradedPair(base, quote),
+                                            px, qty_base, qty_quote, side, "MARKET",
+                                            False, False, False,
+                                            ecosystem, trading_account,
+                                            fee,
+                                            stp=0, external_funds=external,
+                                            min_receive_amount=min_receive_amount,
+                                            apply_fixed_fees_to_receipt=apply_to_receipt_amount,
+                                            snip_9=True
                                             )
 
         elif command.startswith('cancel_order'):
