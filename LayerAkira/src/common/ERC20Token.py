@@ -9,3 +9,6 @@ class ERC20Token(str, Enum):
     AETH = 'AETH'
     AUSDC = 'AUSDC'
     AUSDT = 'AUSDT'
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self.value, format_spec)
