@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional, List, Union, Tuple, Callable
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from starknet_py.utils.typed_data import TypedData
 
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
@@ -46,6 +46,7 @@ class AsyncApiHttpClient:
                  sign_cb: Callable[[int, int], Tuple[int, int]],
                  erc_to_decimals: Dict[ERC20Token, int],
                  exchange_http_host='http://localhost:8080',
+                 http_client_timeout=ClientTimeout(total=2 * 60),
                  verbose=False):
         """
 
@@ -54,7 +55,7 @@ class AsyncApiHttpClient:
         :param exchange_http_host:
         :param verbose:
         """
-        self._http = ClientSession()
+        self._http = ClientSession(timeout=http_client_timeout)
         self._http_host = exchange_http_host
         self._hasher: SnTypedPedersenHasher = sn_hasher
         self._erc_to_decimals = erc_to_decimals
