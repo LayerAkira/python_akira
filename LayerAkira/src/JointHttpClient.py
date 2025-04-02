@@ -11,6 +11,7 @@ from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models import StarknetChainId
 from starknet_py.net.signer.stark_curve_signer import KeyPair
 
+from LayerAkira.src.AccountClient import AccountClient
 from LayerAkira.src.AkiraExchangeClient import AkiraExchangeClient
 from LayerAkira.src.ERC20Client import ERC20Client
 from LayerAkira.src.HttpClient import AsyncApiHttpClient
@@ -25,7 +26,7 @@ from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import Result
 from LayerAkira.src.common.common import precise_to_price_convert, random_int
 from LayerAkira.src.common.constants import ZERO_ADDRESS, \
-    APPROVE_SELECTOR
+    APPROVE_SELECTOR, SNIP_9_ANY_CALLER
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher, AppDomain
 from LayerAkira.src.hasher.Snip9Formatter import Snip9Formatter
 
@@ -337,10 +338,15 @@ class JointHttpClient:
                          f', fees:{[str(p) + ":" + str(b) for p, b in result.data.fees.items()]}')
         return result
 
-    async def get_order(self, acc: ContractAddress, order_hash: int, mode=1) -> Result[
+    async def get_order(self, acc: ContractAddress, order_hash: int, active = 1, mode=1) -> Result[
         Union[ReducedOrderInfo, OrderInfo]]:
         jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
-        return await self._api_client.get_order(acc, jwt, order_hash, mode)
+        return await self._api_client.get_order(acc, jwt, order_hash, active, mode)
+
+    async def get_order_router(self, acc: ContractAddress, t_acc: ContractAddress, order_hash: int, active = 1, mode=1) -> Result[
+        Union[ReducedOrderInfo, OrderInfo]]:
+        jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
+        return await self._api_client.get_order_router(acc, jwt, t_acc, order_hash, active, mode)
 
     async def get_orders(self, acc: ContractAddress, mode: int = 1, limit=20, offset=0) -> Result[
         List[Union[ReducedOrderInfo, OrderInfo]]]:
@@ -375,7 +381,8 @@ class JointHttpClient:
                           external_funds=False,
                           min_receive_amount=0,
                           apply_fixed_fees_to_receipt=True,
-                          snip_9: bool = False
+                          snip_9: bool = False,
+                          caller: Optional[ContractAddress] = None,
                           ) -> \
             Result[str]:
         info = self._trading_acc_to_user_info[acc]
@@ -404,6 +411,7 @@ class JointHttpClient:
         if snip_9:
             snip9_calldata = await self._spawn_snip_9_calldata(
                 order=order.data,
+                caller=caller
             )
 
             if snip9_calldata is not None:
@@ -487,7 +495,8 @@ class JointHttpClient:
 
     async def _spawn_snip_9_calldata(self,
                                      order: Order,
-                                     valid_since_now_seconds=60 * 5
+                                     caller: ContractAddress,
+                                     valid_since_now_seconds=60 * 15
                                      ) -> Optional[ExecuteOutsideCall]:
         calls = await self._spawn_snip_9_calls(
             order=order
@@ -498,7 +507,7 @@ class JointHttpClient:
         signature = [0, 0]
 
         snip_9_calldata = ExecuteOutsideCall(
-            caller=self._invoker_address,
+            caller=caller,
             calls=calls,
             execute_after=int(time.time()) - valid_since_now_seconds,
             execute_before=int(time.time()) + valid_since_now_seconds,

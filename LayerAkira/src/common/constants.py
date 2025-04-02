@@ -2,6 +2,7 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 
 ZERO_ADDRESS = ContractAddress(0)
 APPROVE_SELECTOR = "approve"
+SNIP_9_ANY_CALLER = ContractAddress('0x414e595f43414c4c4552')
 
 ERC20ABI = [
             {

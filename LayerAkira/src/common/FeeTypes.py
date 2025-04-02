@@ -21,7 +21,7 @@ class GasFee:
     gas_per_action: int
     fee_token: ERC20Token
     max_gas_price: int
-    conversion_rate: Tuple[int, int]  # conversion rate to
+    conversion_rate: Tuple[float, float]  # conversion rate to
 
 
 @dataclass

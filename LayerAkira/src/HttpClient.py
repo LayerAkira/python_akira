@@ -88,7 +88,7 @@ class AsyncApiHttpClient:
 
         return rate
 
-    async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, mode: int = 1) -> Result[
+    async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, active:int = 1, mode: int = 1) -> Result[
         Union[OrderInfo, ReducedOrderInfo]]:
         """
 
@@ -98,10 +98,19 @@ class AsyncApiHttpClient:
         :param mode: 1 for full data, 2 for reduced data
         :return:
         """
-        url = f'{self._http_host}/user/order?order_hash={order_hash}&trading_account={acc}&mode={mode}'
+        url = f'{self._http_host}/user/order?order_hash={order_hash}&trading_account={acc}&mode={mode}&active={active}'
         resp = await self._get_query(url, jwt)
         if resp.data is None: return resp
         return Result(self._parse_order_response(resp.data, mode))
+
+
+    async def get_order_router(self, acc: ContractAddress, jwt: str, t_acc: ContractAddress, order_hash: int, active:int = 1, mode: int = 1) -> Result[
+        Union[OrderInfo, ReducedOrderInfo]]:
+        url = f'{self._http_host}/user/order_router?order_hash={order_hash}&trading_account={t_acc}&mode={mode}&active={active}'
+        resp = await self._get_query(url, jwt)
+        if resp.data is None: return resp
+        return Result(self._parse_order_response(resp.data, mode))
+
 
     async def get_orders(self, acc: ContractAddress, jwt: str, mode: int = 1, limit=20, offset=0) -> \
             Result[List[Union[ReducedOrderInfo, OrderInfo]]]:
@@ -298,7 +307,7 @@ class AsyncApiHttpClient:
                         GasFee(gas_fee['gas_per_action'], ERC20Token(gas_fee['fee_token']),
                                precise_to_price_convert(gas_fee['max_gas_price'],
                                                         self._erc_to_decimals[ERC20Token(gas_fee['fee_token'])]),
-                               tuple(int(x) for x in gas_fee['conversion_rate']))
+                               tuple(float(x) for x in gas_fee['conversion_rate']))
                     ),
                     Constraints(
                         d['constraints']['number_of_swaps_allowed'],

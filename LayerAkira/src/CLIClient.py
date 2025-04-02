@@ -19,6 +19,7 @@ from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import GasFee
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import precise_to_price_convert
+from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
 from LayerAkira.src.common.Requests import SpotTicker
 
@@ -139,6 +140,11 @@ class CLIClient:
                                               bool(int(args[3])),
                                               sub_consumer))
                 return True
+            elif command == 'subscribe_snaps':
+                print(await ws.subscribe_book(Stream(args[0]), TradedPair(ERC20Token(args[1]), ERC20Token(args[2])),
+                                              bool(int(args[3])),
+                                              sub_consumer))
+                return True
             return False
 
         async def issue_listen_key(signer: ContractAddress):
@@ -158,8 +164,15 @@ class CLIClient:
             ['sleep', []],
             ['subscribe_book', ['trade', 'ETH', 'USDC', '1']],
             ['subscribe_book', ['bbo', 'ETH', 'USDC', '1']],
-            ['subscribe_book', ['snap', 'ETH', 'USDC', '1']],
+            ['subscribe_snaps', ['snap', 'AETH', 'AUSDC', '0']],
             ['subscribe_fills', [self.cli_cfg.trading_account[0]]],
+
+            # ['place_order', ['AETH/AUSDC', '3000', '0', '0.175000', 'SELL', 'LIMIT', '1', '0', '0', 'ROUTER', '0', 'INTERNAL', '0', 'F_FEE_ON_SPEND', 'STRK']],
+            #
+            # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'ANY']],
+            # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'NOT_ANY']],
+
+
             #
             # ['approve_exchange', ['STRK', '1000']],
             # ['approve_exchange', ['USDC', '10000000000000']],
@@ -191,6 +204,15 @@ class CLIClient:
             #   '0']],
 
         ]
+
+        # presets_commands.extend(
+        #     [
+        #         ['place_order',
+        #          ['AETH/AUSDC', str(3000 + i), '0', '1', 'SELL', 'LIMIT', '1', '0', '0', 'ROUTER', '0', 'INTERNAL', '0',
+        #           'F_FEE_ON_SPEND', 'STRK']]
+        #         for i in range(35)
+        #     ]
+        # )
 
         for command, args in presets_commands:
             try:
@@ -274,8 +296,11 @@ class CLIClient:
         elif command.startswith('get_orders'):
             return await client.get_orders(trading_account, int(args[0]), int(args[1]), int(args[2]))
 
+        elif command.startswith('get_order_router'):
+            return await client.get_order_router(trading_account, ContractAddress(args[0]), int(args[1], 16 if args[1].startswith('0x') else 10), int(args[2]))
+
         elif command.startswith('get_order'):
-            return await client.get_order(trading_account, int(args[0], 16 if args[0].startswith('0x') else 10))
+            return await client.get_order(trading_account, int(args[0], 16 if args[0].startswith('0x') else 10), int(args[1]))
 
         elif command.startswith('get_bbo'):
             b, q = args[0].split('/')
@@ -318,12 +343,13 @@ class CLIClient:
                                             )
 
         elif command.startswith('place_snip9_taker_order'):
-            ticker, px, qty_base, side = args
+            ticker, px, qty_base, side, is_any_caller = args
             min_receive_amount = str("0")
             base, quote = ticker.split('/')
             base, quote = ERC20Token(base), ERC20Token(quote)
             ecosystem = False
             external = True
+            caller = SNIP_9_ANY_CALLER if is_any_caller == "ANY" else ContractAddress("0x04f25E6190081D2dAa7cDf3D1aB2Ce216Fe9e93456083E6D29D69b62AD915Db6")
             px = precise_to_price_convert(px, self._erc_to_decimals[quote])
             qty_base = precise_to_price_convert(qty_base, self._erc_to_decimals[base])
             qty_quote = precise_to_price_convert("0", self._erc_to_decimals[quote])
@@ -345,7 +371,8 @@ class CLIClient:
                                             stp=0, external_funds=external,
                                             min_receive_amount=min_receive_amount,
                                             apply_fixed_fees_to_receipt=apply_to_receipt_amount,
-                                            snip_9=True
+                                            snip_9=True,
+                                            caller=caller
                                             )
 
         elif command.startswith('cancel_order'):
