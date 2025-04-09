@@ -90,6 +90,31 @@ class SignScheme(str, Enum):
     DIRECT = "direct"
     NOT_SPECIFIED = ""
 
+@dataclass
+class MinimalTakerOrderInfo:
+    """Represent intermediary order in synthetic order matching"""
+    price: int
+    ticker: TradedPair
+    is_sell_side: bool
+    base_asset: int
+
+
+@dataclass
+class SorContext:
+    """
+        Represent the taker context for synthetic order matching
+    """
+    path: List[MinimalTakerOrderInfo]
+    order_fee: OrderFee
+    allow_non_atomic: bool
+    min_receive_amount: int
+    max_spend_amount: int
+    last_qty: Quantity
+
+    def end_token(self):
+        if not self.path[-1].is_sell_side:
+            return self.path[-1].ticker.base
+        return self.path[-1].ticker.quote
 
 @dataclass
 class Order:
@@ -106,6 +131,7 @@ class Order:
     source: str = 'layerakira'
     sign_scheme: SignScheme = None
     snip9_calldata: Optional[ExecuteOutsideCall] = None
+    sor_ctx: Optional[SorContext] = None  # only defined for sor orders
 
     def __post_init__(self):
         assert isinstance(self.maker, ContractAddress)

@@ -16,12 +16,13 @@ from LayerAkira.src.JointHttpClient import JointHttpClient
 from LayerAkira.src.WsClient import WsClient, Stream
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
-from LayerAkira.src.common.FeeTypes import GasFee
+from LayerAkira.src.common.FeeTypes import GasFee, OrderFee, FixedFee
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import precise_to_price_convert
-from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER
+from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER, ZERO_ADDRESS
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
-from LayerAkira.src.common.Requests import SpotTicker
+from LayerAkira.src.common.Requests import SpotTicker, SorContext, MinimalTakerOrderInfo, Quantity
+from LayerAkira.src.SorCLI import SorCLI
 
 
 def GAS_FEE_ACTION(gas: int, fix_steps):
@@ -96,6 +97,8 @@ class CLIClient:
 
     def __init__(self, cli_cfg_path: str):
         self.cli_cfg = parse_cli_cfg(cli_cfg_path)
+        self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
+        self.sor_cli = SorCLI(self._erc_to_decimals)
 
     async def start(self, domain):
         node_client = FullNodeClient(node_url=self.cli_cfg.node)
@@ -107,7 +110,6 @@ class CLIClient:
 
         sn_hasher = SnTypedPedersenHasher(erc_to_addr, domain, self.cli_cfg.core_address,
                                           self.cli_cfg.executor_address)
-        self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
         api_client = AsyncApiHttpClient(sn_hasher, lambda msg_hash, pk: message_signature(msg_hash, pk),
                                         self._erc_to_decimals, self.cli_cfg.http,
                                         verbose=self.cli_cfg.verbose)
@@ -167,11 +169,15 @@ class CLIClient:
             ['subscribe_snaps', ['snap', 'AETH', 'AUSDC', '0']],
             ['subscribe_fills', [self.cli_cfg.trading_account[0]]],
 
+
+
             # ['place_order', ['AETH/AUSDC', '3000', '0', '0.175000', 'SELL', 'LIMIT', '1', '0', '0', 'ROUTER', '0', 'INTERNAL', '0', 'F_FEE_ON_SPEND', 'STRK']],
             #
             # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'ANY']],
             # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'NOT_ANY']],
 
+            # ['place_sor_taker_order', ['strk_p', '500', '0.2', '1.0', '100.0']],
+            # ['place_sor_taker_order', ['test_p', '100.5', '0.0005', '10000', '600.5']],
 
             #
             # ['approve_exchange', ['STRK', '1000']],
@@ -245,7 +251,13 @@ class CLIClient:
         if command.startswith('sleep'):
             return await asyncio.sleep(5)
 
-        if command.startswith('query_gas'):
+        elif command.startswith('list_sor_paths'):
+            return self.sor_cli.list_sor_paths()
+
+        elif command.startswith('place_sor_taker_order'):
+            return await self.sor_cli.place_sor_taker_order(client, trading_account, args, gas_fee_steps)
+
+        elif command.startswith('query_gas'):
             return await client.query_gas_price(trading_account)
 
         elif command.startswith('set_account'):

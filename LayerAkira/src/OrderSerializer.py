@@ -2,7 +2,7 @@ from typing import Dict, Tuple, Union, Optional
 
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import FixedFee, GasFee
-from LayerAkira.src.common.Requests import Order, ExecuteOutsideCall
+from LayerAkira.src.common.Requests import Order, ExecuteOutsideCall, SorContext
 from LayerAkira.src.common.common import precise_from_price_to_str_convert
 
 
@@ -50,6 +50,56 @@ def serialize_snip9_calldata(sinp_9_calldata: Optional[ExecuteOutsideCall]) -> O
     }
 
 
+def sor_context_to_json(order: Order) -> dict:
+    if not order.sor_ctx:
+        return None
+
+    sor_ctx = order.sor_ctx
+
+    path_json = []
+    for path_item in sor_ctx.path:
+        path_json.append({
+            "price": str(path_item.price),
+            "ticker": [path_item.ticker.base.value, path_item.ticker.quote.value],
+            "is_sell_side": path_item.is_sell_side,
+            "order_hash": path_item.order_hash if hasattr(path_item, 'order_hash') else 0
+        })
+
+    order_fee_json = {
+        "trade_fee": {
+            "taker_pbips": sor_ctx.order_fee.trade_fee.taker_pbips,
+            "maker_pbips": sor_ctx.order_fee.trade_fee.maker_pbips,
+            "recipient": str(sor_ctx.order_fee.trade_fee.recipient),
+            "apply_to_receipt_amount": sor_ctx.order_fee.trade_fee.apply_to_receipt_amount
+        },
+        "router_fee": {
+            "taker_pbips": sor_ctx.order_fee.router_fee.taker_pbips,
+            "maker_pbips": sor_ctx.order_fee.router_fee.maker_pbips,
+            "recipient": str(sor_ctx.order_fee.router_fee.recipient),
+            "apply_to_receipt_amount": sor_ctx.order_fee.router_fee.apply_to_receipt_amount
+        },
+        "gas_fee": {
+            "fee_token": sor_ctx.order_fee.gas_fee.fee_token.value,
+            "gas_per_action": sor_ctx.order_fee.gas_fee.gas_per_action,
+            "max_gas_price": str(sor_ctx.order_fee.gas_fee.max_gas_price),
+            "conversion_rate": [
+                str(sor_ctx.order_fee.gas_fee.conversion_rate[0]),
+                str(sor_ctx.order_fee.gas_fee.conversion_rate[1])
+            ]
+        }
+    }
+
+    result = {
+        "path": path_json,
+        "order_fee": order_fee_json,
+        "allow_non_atomic": sor_ctx.allow_non_atomic,
+        "min_receive_amount": str(sor_ctx.min_receive_amount),
+        "max_spend_amount": str(sor_ctx.max_spend_amount),
+        "last_base_qty": str(sor_ctx.last_qty.base_qty),
+        "last_quote_qty": str(sor_ctx.last_qty.quote_qty)
+    }
+
+    return result
 class SimpleOrderSerializer:
     def __init__(self, erc_to_decimals: Dict[ERC20Token, int]):
         self._erc_to_decimals = erc_to_decimals
@@ -102,5 +152,9 @@ class SimpleOrderSerializer:
         snip9_data = serialize_snip9_calldata(data.snip9_calldata)
         if snip9_data is not None:
             result['snip9_call'] = snip9_data
+
+        sor = sor_context_to_json(order=data)
+        if sor is not None:
+            result['sor'] = sor
 
         return result
