@@ -360,10 +360,11 @@ class JointHttpClient:
                                         order_flags=order_flags, ticker=ticker,
                                         fee=OrderFee(
                                             FixedFee(self.fee_recipient, *info.fees[ticker],
-                                                     apply_fixed_fees_to_receipt),
+                                                     ),
                                             FixedFee(ZERO_ADDRESS, 0, 0,
-                                                     apply_fixed_fees_to_receipt) if router_fee is None else router_fee,
-                                            gas_fee, ), nonce=info.nonce,
+                                                     ) if router_fee is None else router_fee,
+                                            gas_fee,
+                                            apply_to_receipt_amount=apply_fixed_fees_to_receipt), nonce=info.nonce,
                                         base_asset=10 ** self._token_to_decimals[ticker.base],
                                         router_signer=router_signer if router_signer is not None else ZERO_ADDRESS,
                                         stp=stp, min_receive_amount=min_receive_amount
@@ -423,7 +424,7 @@ class JointHttpClient:
 
                       )
         if order.is_passive_order():
-            order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0, order.fee.router_fee.apply_to_receipt_amount)
+            order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0)
             order.router_signer = ZERO_ADDRESS
 
         # router taker through router, if not explicitly specified
