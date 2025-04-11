@@ -168,10 +168,6 @@ order_type = {
         {
             "name": "taker_pbips",
             "type": "felt"
-        },
-        {
-            "name": "apply_to_receipt_amount",
-            "type": "bool"
         }
     ],
     "Constraints": [
@@ -250,6 +246,14 @@ order_type = {
             "type": "FixedFee"
         },
         {
+            "name": "integrator_fee",
+            "type": "FixedFee"
+        },
+        {
+            "name": "apply_to_receipt_amount",
+            "type": "bool"
+        },
+        {
             "name": "gas_fee",
             "type": "GasFee"
         }
@@ -313,7 +317,11 @@ cancel_type = {
         {
             "name": "salt",
             "type": "felt"
-        }
+        },
+        {
+            "name": "sign_scheme",
+            "type": "felt"
+        },
     ]
 }
 
@@ -358,6 +366,10 @@ cancel_all_type = {
         {
             "name": "ticker",
             "type": "Ticker"
+        },
+        {
+            "name": "sign_scheme",
+            "type": "felt"
         },
 
     ]

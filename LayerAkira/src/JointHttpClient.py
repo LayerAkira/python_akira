@@ -1,6 +1,5 @@
 import datetime
 import logging
-import time
 from collections import defaultdict
 from typing import Dict, Tuple, Optional, DefaultDict, List, Union
 
@@ -395,16 +394,16 @@ class JointHttpClient:
             order_flags=order_flags, ticker=ticker,
             fee=OrderFee(
                 FixedFee(self.fee_recipient, *info.fees[ticker],
-                         apply_fixed_fees_to_receipt),
+                         ),
                 FixedFee(ZERO_ADDRESS, 0, 0,
-                         apply_fixed_fees_to_receipt) if router_fee is None else router_fee,
-                gas_fee, ), nonce=info.nonce if info.nonce is not None else 0,
+                         ) if router_fee is None else router_fee,
+                gas_fee,
+                apply_to_receipt_amount=apply_fixed_fees_to_receipt), nonce=info.nonce if info.nonce is not None else 0,
             base_asset=10 ** self._token_to_decimals[ticker.base],
             router_signer=router_signer if router_signer is not None else ZERO_ADDRESS,
             stp=stp, min_receive_amount=min_receive_amount, snip_9=snip_9,
             sor_context=sor_context
         )
-
         if order.data is None:
             logging.warning(f'Failed to spawn order {order}')
             return order
@@ -477,7 +476,7 @@ class JointHttpClient:
 
         order.sor_ctx.order_fee = order.fee
         if order.is_passive_order():
-            order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0, order.fee.router_fee.apply_to_receipt_amount)
+            order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0)
             order.router_signer = ZERO_ADDRESS
 
         # router taker through router, if not explicitly specified

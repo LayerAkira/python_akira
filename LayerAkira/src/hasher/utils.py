@@ -30,14 +30,18 @@ def get_order_typed_data(obj: Order, erc_to_addr, domain, exchange: ContractAddr
                 'recipient': obj.fee.trade_fee.recipient.as_str(),
                 'maker_pbips': obj.fee.trade_fee.maker_pbips,
                 'taker_pbips': obj.fee.trade_fee.taker_pbips,
-                'apply_to_receipt_amount': obj.fee.trade_fee.apply_to_receipt_amount
             },
             'router_fee': {
                 'recipient': obj.fee.router_fee.recipient.as_str(),
                 'maker_pbips': obj.fee.router_fee.maker_pbips,
                 'taker_pbips': obj.fee.router_fee.taker_pbips,
-                'apply_to_receipt_amount': obj.fee.router_fee.apply_to_receipt_amount
             },
+            'integrator_fee': {
+                'recipient': obj.fee.integrator_fee.recipient.as_str(),
+                'maker_pbips': obj.fee.integrator_fee.maker_pbips,
+                'taker_pbips': obj.fee.integrator_fee.taker_pbips,
+            },
+            'apply_to_receipt_amount': obj.fee.apply_to_receipt_amount,
             'gas_fee': {
                 'gas_per_action': obj.fee.gas_fee.gas_per_action,
                 'fee_token': erc_to_addr[obj.fee.gas_fee.fee_token].as_str(),
@@ -96,7 +100,9 @@ def cancel_typed_data(obj: CancelRequest, erc_to_addr, domain):
                            "chainId": hex(domain.chain_id)}, "types": cancel_type, "primaryType": "CancelOrder",
                 "message": {'maker': obj.maker.as_str(),
                             'order_hash': hex(obj.order_hash),
-                            'salt': hex(obj.salt)}
+                            'salt': hex(obj.salt),
+                            'sign_scheme': obj.sign_scheme.value
+                            }
                 }
     else:
         data = {"domain": {"name": domain.name, "version": domain.version,
@@ -108,7 +114,9 @@ def cancel_typed_data(obj: CancelRequest, erc_to_addr, domain):
                                 'quote': erc_to_addr[obj.exchange_ticker.pair.quote].as_str(),
                                 'to_ecosystem_book': obj.exchange_ticker.is_ecosystem_book,
                             },
-                            'salt': hex(obj.salt)}}
+                            'salt': hex(obj.salt), 'sign_scheme': obj.sign_scheme.value},
+
+                }
     return data
 
 

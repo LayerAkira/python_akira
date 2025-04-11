@@ -12,7 +12,6 @@ def serialize_fixed_fee(fee: FixedFee) -> Tuple[
         'recipient': fee.recipient.as_str(),
         'maker_pbips': fee.maker_pbips,
         'taker_pbips': fee.taker_pbips,
-        'apply_to_receipt_amount': fee.apply_to_receipt_amount
     }
 
 
@@ -140,6 +139,8 @@ class SimpleOrderSerializer:
             "fee": {
                 "trade_fee": serialize_fixed_fee(data.fee.trade_fee)[1],
                 'router_fee': serialize_fixed_fee(data.fee.router_fee)[1],
+                'integrator_fee': serialize_fixed_fee(data.fee.integrator_fee)[1],
+                'apply_to_receipt_amount':data.fee.apply_to_receipt_amount,
                 'gas_fee': serialize_gas_fee(data.fee.gas_fee, self._erc_to_decimals)[1],
             },
             "salt": hex(data.salt),

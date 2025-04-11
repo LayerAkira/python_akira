@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Tuple, List
 
@@ -129,7 +129,7 @@ class Order:
     sign: Tuple[int, int]
     router_sign: Tuple[int, int]
     source: str = 'layerakira'
-    sign_scheme: SignScheme = None
+    sign_scheme: Optional[SignScheme] = field(default_factory=lambda: None)
     snip9_calldata: Optional[ExecuteOutsideCall] = None
     sor_ctx: Optional[SorContext] = None  # only defined for sor orders
 
@@ -195,6 +195,7 @@ class CancelRequest:
     exchange_ticker: Optional[SpotTicker]  # ignored in case order hash defined
     salt: int
     sign: Tuple[int, int]
+    sign_scheme: SignScheme = field(default_factory=lambda: SignScheme.ECDSA)
 
 
 @dataclass
