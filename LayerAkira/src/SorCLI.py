@@ -66,44 +66,23 @@ class SorCLI:
             print(f"{name}: {path.description}")
         return None
 
-    async def place_sor_taker_order(self, client: JointHttpClient, trading_account: ContractAddress,
-                                  args: List[str], gas_fee_steps: Dict[str, Dict[bool, int]]):
-        """Place a SOR taker order using a predefined path"""
+    async def _validate_input_args(self, args: List[str], path: SorPath) -> Tuple[bool, str]:
+        """Validate input arguments for SOR taker order"""
         if len(args) < 3:
-            print("Usage: place_sor_taker_order <path_name> <qty> <price1> [price2] [price3] <last_qty>")
-            return None
-
-        path_name = args[0]
-        if path_name not in SOR_PATHS:
-            print(f"Unknown path: {path_name}. Use 'list_sor_paths' to see available paths.")
-            return None
-
-        path = SOR_PATHS[path_name]
-        qty_first = precise_to_price_convert(args[1], self._token_to_decimals[path.pairs[0].token_in])
-        lb, lq = (qty_first, 0) if path.pairs[0].token_in == path.pairs[0].base_token else (0, qty_first)
-        
-        # Extract prices from args
+            return False, "Usage: place_sor_taker_order <path_name> <qty> <price1> [price2] [price3] <last_qty>"
+            
         prices = [price for price in args[2:2+len(path.pairs)]]
-        
         if len(prices) != len(path.pairs):
-            print(f"Expected {len(path.pairs)} prices for path {path_name}, got {len(prices)}")
-            return None
+            return False, f"Expected {len(path.pairs)} prices for path, got {len(prices)}"
             
-        # Get the last_qty value (should be the last argument)
         if len(args) < 3 + len(path.pairs):
-            print(f"Missing last_qty parameter")
-            return None
+            return False, "Missing last_qty parameter"
             
-        # Determine last token for decimals
-        last_pair = path.pairs[-1]
-        last_token = last_pair.token_out
-        
-        # Use the correct number of decimals for the last token
-        last_qty_value = precise_to_price_convert(args[2 + len(path.pairs)], self._token_to_decimals[last_token])
-        
-        # Create SOR path with prices
+        return True, ""
+
+    async def _create_path_info(self, path: SorPath, prices: List[str]) -> List[MinimalTakerOrderInfo]:
+        """Create path info with prices for each pair"""
         path_info = []
-        
         for i, pair in enumerate(path.pairs):
             raw_price = precise_to_price_convert(prices[i], self._token_to_decimals[pair.token_out])
             is_sell_side = pair.token_in == pair.base_token
@@ -121,39 +100,78 @@ class SorCLI:
                 is_sell_side=is_sell_side,
                 base_asset=10 ** self._token_to_decimals[pair.base_token]
             ))
+        return path_info
 
-        # Get fee parameters for the first pair
-        (ecosystem, external,
-         min_receive_amount, apply_to_receipt_amount, gas_fee) = await self._prepare_taker_order_params(
-            client, trading_account, gas_fee_steps)
-        
-        # Check if last token is base or quote in the last pair
+    async def _create_sor_context(self, path_info: List[MinimalTakerOrderInfo], 
+                                last_pair: SorPair, last_token: ERC20Token,
+                                last_qty_value: int, min_receive_amount: int) -> SorContext:
+        """Create SOR context for the order"""
         is_base = (last_token == last_pair.base_token)
-        
-        # Set b and q based on whether last token is base or quote
         b = last_qty_value if is_base else 0
         q = 0 if is_base else last_qty_value
         bt = last_pair.base_token
 
-        # Create SOR context
-        sor_context = SorContext(
+        return SorContext(
             path=path_info,
             order_fee=None,
-            allow_non_atomic=False,
+            allow_non_atomic=True,
             min_receive_amount=min_receive_amount,
             max_spend_amount=0,
             last_qty=Quantity(b, q, 10 ** self._token_to_decimals[bt])
         )
 
+    async def place_sor_taker_order(self, client: JointHttpClient, trading_account: ContractAddress,
+                                  args: List[str], gas_fee_steps: Dict[str, Dict[bool, int]]):
+        """Place a SOR taker order using a predefined path"""
+        path_name = args[0]
+        if path_name not in SOR_PATHS:
+            print(f"Unknown path: {path_name}. Use 'list_sor_paths' to see available paths.")
+            return None
+
+        path = SOR_PATHS[path_name]
+        
+        # Validate input arguments
+        is_valid, error_msg = await self._validate_input_args(args, path)
+        if not is_valid:
+            print(error_msg)
+            return None
+
+        # Process first pair quantities
+        first_pair = path.pairs[0]
+        qty_first = precise_to_price_convert(args[1], self._token_to_decimals[first_pair.token_in])
+        lb, lq = (qty_first, 0) if first_pair.token_in == first_pair.base_token else (0, qty_first)
+        
+        # Extract prices
+        prices = [price for price in args[2:2+len(path.pairs)]]
+        
+        # Process last pair quantities
+        last_pair = path.pairs[-1]
+        last_token = last_pair.token_out
+        last_qty_value = precise_to_price_convert(args[2 + len(path.pairs)], self._token_to_decimals[last_token])
+        
+        # Create path info
+        path_info = await self._create_path_info(path, prices)
+        
+        # Get fee parameters
+        (ecosystem, external,
+         min_receive_amount, apply_to_receipt_amount, gas_fee) = await self._prepare_taker_order_params(
+            client, trading_account, gas_fee_steps)
+        
+        # Create SOR context
+        sor_context = await self._create_sor_context(
+            path_info[1:], last_pair, last_token, last_qty_value, min_receive_amount)
+
         return await client.place_order(trading_account,
-                                        TradedPair(path.pairs[0].base_token, path.pairs[0].quote_token),
+                                        TradedPair(first_pair.base_token, first_pair.quote_token),
                                         path_info[0].price,
                                         lb, lq,
-                                        "SELL" if path.pairs[0].token_in == path.pairs[0].base_token else "BUY", "MARKET",
+                                        "SELL" if first_pair.token_in == first_pair.base_token else "BUY", "MARKET",
                                         False, False, False,
-                                        ecosystem, trading_account,
+                                        ecosystem,
+                                        trading_account,
                                         gas_fee,
-                                        stp=0, external_funds=external,
+                                        stp=0,
+                                        external_funds=external,
                                         min_receive_amount=min_receive_amount,
                                         apply_fixed_fees_to_receipt=apply_to_receipt_amount,
                                         snip_9=True,
