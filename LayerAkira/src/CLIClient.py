@@ -16,13 +16,13 @@ from LayerAkira.src.JointHttpClient import JointHttpClient
 from LayerAkira.src.WsClient import WsClient, Stream
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
-from LayerAkira.src.common.FeeTypes import GasFee, OrderFee, FixedFee
+from LayerAkira.src.common.FeeTypes import GasFee
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import precise_to_price_convert
-from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER, ZERO_ADDRESS
+from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
-from LayerAkira.src.common.Requests import SpotTicker, SorContext, MinimalTakerOrderInfo, Quantity
-from LayerAkira.src.SorCLI import SorCLI
+from LayerAkira.src.common.Requests import SpotTicker
+from LayerAkira.src.sor.SorCLI import SorCLI
 
 
 def GAS_FEE_ACTION(gas: int, fix_steps):
@@ -42,6 +42,7 @@ class CLIConfig:
     core_address: ContractAddress
     executor_address: ContractAddress
     router_address: ContractAddress
+    snip9_address: ContractAddress
     invoker_address: ContractAddress
     http: str
     wss: str
@@ -72,6 +73,7 @@ def parse_cli_cfg(file_path: str):
     return CLIConfig(data['node_url'], ContractAddress(data['core_address']),
                      ContractAddress(data['executor_address']),
                      ContractAddress(data['router_address']),
+                     ContractAddress(data['snip9_address']),
                      ContractAddress(data['invoker_address']),
                      data['http'], data['wss'], tokens,
                      StarknetChainId.SEPOLIA if data['is_testnet']
@@ -103,8 +105,11 @@ class CLIClient:
     async def start(self, domain):
         node_client = FullNodeClient(node_url=self.cli_cfg.node)
         erc_to_addr = {token.symbol: token.address for token in self.cli_cfg.tokens}
-        contract_client = AkiraExchangeClient(node_client, self.cli_cfg.core_address,
-                                              self.cli_cfg.executor_address, self.cli_cfg.router_address,
+        contract_client = AkiraExchangeClient(node_client,
+                                              self.cli_cfg.core_address,
+                                              self.cli_cfg.executor_address,
+                                              self.cli_cfg.router_address,
+                                              self.cli_cfg.snip9_address,
                                               erc_to_addr)
         await contract_client.init()
 

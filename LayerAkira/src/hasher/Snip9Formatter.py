@@ -7,6 +7,7 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.Requests import Order, Snip9OrderMatch, Call
 from LayerAkira.src.hasher.utils import get_event_selector
+from LayerAkira.src.sor.SORDetails import SORDetails
 
 
 class Snip9Formatter:
@@ -25,7 +26,8 @@ class Snip9Formatter:
         subcalls = []
         for (addr, amount), _ in order.snip9_calldata.get_multicall(set(self._erc_to_addr.values()),
                                                                     self._akira.core_address,
-                                                                    self._akira.executor_address):
+                                                                    self._akira.executor_address,
+                                                                    self._akira.snip9_address):
             if addr == self._akira.core_address:
                 subcalls.append(Call(addr.as_int(), get_event_selector('grant_access_to_executor'), []))
             else:
@@ -35,10 +37,22 @@ class Snip9Formatter:
                 call.to_addr = addr.as_int()
                 subcalls.append(Call(call.to_addr, call.selector, call.calldata))
 
-        call = self._akira.executor.prepare_calldata('placeTakerOrder',
-                                                     self._akira_formatter.prepare_order(order)['order'],
-                                                     router_sign,
-                                                     )
+        if not order.is_sor():
+
+            call = self._akira.snip9.prepare_calldata('placeTakerOrder',
+                                                      self._akira_formatter.prepare_order(order)['order'],
+                                                      router_sign,
+                                                      )
+
+        else:
+            place_order_calldata = self._akira_formatter.prepare_place_sor_order(
+                order.build_minimal_order_info(),
+                order.sor_ctx.path, order.router_sign,
+                SORDetails.build_from(order)
+            )
+            print('pretty', place_order_calldata)
+            call = self._akira.snip9.prepare_calldata('placeSORTakerOrder', **place_order_calldata)
+            print('raw', call)
 
         snip9_order_match = Snip9OrderMatch(
             order.maker,

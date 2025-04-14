@@ -141,6 +141,9 @@ class Order:
     def is_passive_order(self):
         return not self.type == OrderType.MARKET and self.post_only
 
+    def is_sor(self) -> bool:
+        return self.sor_ctx is not None
+
     @property
     def side(self) -> Side:
         return Side.SELL if self.flags.is_sell_side else Side.BUY
@@ -168,6 +171,10 @@ class Order:
 
     def is_ecosystem_order(self):
         return self.router_sign[0] == 0 and self.router_sign[1] == 0
+
+    def build_minimal_order_info(self):
+        return MinimalTakerOrderInfo(self.price, self.ticker, self.flags.is_sell_side,
+                                     10 ** self.qty.base_asset)
 
     def __str__(self):
         fields = [

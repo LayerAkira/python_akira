@@ -11,7 +11,6 @@ from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models import StarknetChainId
 from starknet_py.net.signer.stark_curve_signer import KeyPair
 
-from LayerAkira.src.AccountClient import AccountClient
 from LayerAkira.src.AkiraExchangeClient import AkiraExchangeClient
 from LayerAkira.src.ERC20Client import ERC20Client
 from LayerAkira.src.HttpClient import AsyncApiHttpClient

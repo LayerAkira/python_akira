@@ -1,9 +1,10 @@
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import FixedFee, GasFee
-from LayerAkira.src.common.Requests import Order, OrderFlags, IncreaseNonce, Withdraw
+from LayerAkira.src.common.Requests import Order, OrderFlags, IncreaseNonce, Withdraw, MinimalTakerOrderInfo
 from LayerAkira.src.common.ContractAddress import ContractAddress
+from LayerAkira.src.sor.SORDetails import SORDetails
 
 
 class AkiraFormatter:
@@ -37,6 +38,8 @@ class AkiraFormatter:
                 'fee': {
                     'trade_fee': self._prepare_fixed_fee(order.fee.trade_fee),
                     'router_fee': self._prepare_fixed_fee(order.fee.router_fee),
+                    'integrator_fee': self._prepare_fixed_fee(order.fee.integrator_fee),
+                    'apply_to_receipt_amount': order.fee.apply_to_receipt_amount,
                     'gas_fee': self._prepare_gas_fee(order.fee.gas_fee),
                 },
                 'salt': order.salt,
@@ -78,7 +81,7 @@ class AkiraFormatter:
     def _prepare_fixed_fee(fixed_fee: FixedFee):
         return {
             'recipient': fixed_fee.recipient.as_int(), 'maker_pbips': fixed_fee.maker_pbips,
-            'taker_pbips': fixed_fee.taker_pbips, 'apply_to_receipt_amount':fixed_fee.apply_to_receipt_amount
+            'taker_pbips': fixed_fee.taker_pbips
         }
 
     @staticmethod
@@ -92,3 +95,57 @@ class AkiraFormatter:
             "to_ecosystem_book": flags.to_ecosystem_book,
             "external_funds": flags.external_funds
         }
+
+    def prepare_place_sor_order(
+            self,
+            orchestrate_order: MinimalTakerOrderInfo,
+            path: List[MinimalTakerOrderInfo],
+            router_signature: Tuple[int, int],
+            details: SORDetails
+    ):
+
+        return {
+            'orchestrate_order': self._prepare_simple_order(orchestrate_order),
+            'path': [self._prepare_simple_order(order) for order in path],
+            'router_signature': router_signature,
+            'details': {
+                'lead_qty': self._prepare_quantity(details.lead_qty),
+                'last_qty': self._prepare_quantity(details.last_qty),
+                'trade_fee': self._prepare_fixed_fee(details.trade_fee),
+                'router_fee': self._prepare_fixed_fee(details.router_fee),
+                'integrator_fee': self._prepare_fixed_fee(details.integrator_fee),
+                'apply_to_receipt_amount': details.apply_to_receipt_amount,
+                'gas_fee': self._prepare_gas_fee(details.gas_fee),
+
+                'created_at': details.created_at,
+                'source': details.source,
+                'allow_nonatomic': details.allow_nonatomic,
+                'to_ecosystem_book': details.to_ecosystem_book,
+                'duration_valid': details.duration_valid,
+                'nonce': details.nonce,
+                'external_funds': details.external_funds,
+                'router_signer': details.router_signer.as_int(),
+                'salt': details.salt,
+                'sign_scheme': details.sign_scheme.value,
+                'number_of_swaps_allowed': details.number_of_swaps_allowed,
+                'min_receive_amount': details.min_receive_amount,
+                'max_spend_amount': details.max_spend_amount,
+            }
+        }
+
+    def _prepare_simple_order(self, order: MinimalTakerOrderInfo):
+        return {
+            'price': order.price,
+            'base_asset': order.base_asset,  # assuming base_asset is already an integer
+            'ticker': self._prepare_ticker(order.ticker),
+            'is_sell_side': order.is_sell_side,
+        }
+
+    @staticmethod
+    def _prepare_quantity(qty):
+        return {'base_qty': qty.base_qty.value, 'quote_qty': qty.quote_qty.value,
+                'base_asset': qty.base_asset}
+
+    def _prepare_ticker(self, ticker):
+        return self._erc_to_addr[ticker.base].as_int(), self._erc_to_addr[ticker.quote].as_int()
+
