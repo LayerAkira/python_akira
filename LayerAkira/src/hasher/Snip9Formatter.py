@@ -47,7 +47,7 @@ class Snip9Formatter:
         else:
             place_order_calldata = self._akira_formatter.prepare_place_sor_order(
                 order.build_minimal_order_info(),
-                order.sor_ctx.path, order.router_sign,
+                order.sor_ctx.path, router_sign,
                 SORDetails.build_from(order)
             )
             print('pretty', place_order_calldata)
