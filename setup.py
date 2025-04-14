@@ -37,7 +37,7 @@ setup(
         "Operating System :: OS Independent"
     ],
     packages=["LayerAkira", "LayerAkira.src", "LayerAkira.src.common", "LayerAkira.executables",
-              "LayerAkira.src.hasher"],
+              "LayerAkira.src.hasher", "LayerAkira.src.sor"],
     include_package_data=True,
     install_requires=[
         'websockets',

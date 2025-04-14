@@ -143,7 +143,7 @@ class AkiraFormatter:
 
     @staticmethod
     def _prepare_quantity(qty):
-        return {'base_qty': qty.base_qty.value, 'quote_qty': qty.quote_qty.value,
+        return {'base_qty': qty.base_qty, 'quote_qty': qty.quote_qty,
                 'base_asset': qty.base_asset}
 
     def _prepare_ticker(self, ticker):

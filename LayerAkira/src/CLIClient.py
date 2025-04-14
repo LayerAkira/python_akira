@@ -182,7 +182,7 @@ class CLIClient:
             # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'NOT_ANY']],
 
             # ['place_sor_taker_order', ['strk_p', '500', '0.2', '1.0', '100.0']],
-            # ['place_sor_taker_order', ['test_p', '100.5', '0.0005', '10000', '600.5']],
+            # ['place_sor_taker_order', ['test_p02', '2', '3000', '1.0001', '6000']],
 
             #
             # ['approve_exchange', ['STRK', '1000']],

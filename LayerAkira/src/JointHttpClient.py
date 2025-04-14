@@ -548,7 +548,7 @@ class JointHttpClient:
             to=erc_address,
             selector=APPROVE_SELECTOR,
             args=[self._executor_address.as_str(), hex(spending_amount)],
-            kwargs={}
+            kwargs=None
         )
 
         calls.append(approve_call)

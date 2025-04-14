@@ -60,7 +60,7 @@ class SimpleOrderSerializer:
         path_json = []
         for path_item in sor_ctx.path:
             path_json.append({
-                "price": str(path_item.price),
+                "price": precise_from_price_to_str_convert(path_item.price, self._erc_to_decimals[path_item.ticker.quote]),
                 "ticker": [path_item.ticker.base.value, path_item.ticker.quote.value],
                 "is_sell_side": path_item.is_sell_side,
                 "order_hash": path_item.order_hash if hasattr(path_item, 'order_hash') else 0
@@ -79,8 +79,10 @@ class SimpleOrderSerializer:
             "allow_non_atomic": sor_ctx.allow_non_atomic,
             "min_receive_amount": str(sor_ctx.min_receive_amount),
             "max_spend_amount": str(sor_ctx.max_spend_amount),
-            "last_base_qty": str(sor_ctx.last_qty.base_qty),
-            "last_quote_qty": str(sor_ctx.last_qty.quote_qty)
+            "last_base_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.base_qty,
+                                                               self._erc_to_decimals[sor_ctx.path[-1].ticker.base]),
+            "last_quote_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.quote_qty,
+                                                                self._erc_to_decimals[sor_ctx.path[-1].ticker.quote]),
         }
 
         return result

@@ -174,7 +174,7 @@ class Order:
 
     def build_minimal_order_info(self):
         return MinimalTakerOrderInfo(self.price, self.ticker, self.flags.is_sell_side,
-                                     10 ** self.qty.base_asset)
+                                     self.qty.base_asset)
 
     def __str__(self):
         fields = [

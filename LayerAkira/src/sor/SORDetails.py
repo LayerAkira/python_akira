@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.FeeTypes import FixedFee, GasFee
-from LayerAkira.src.common.Requests import Quantity, SignScheme, Order
+from LayerAkira.src.common.Requests import Quantity, SignScheme, Order, SorContext
 
 
 @dataclass
@@ -30,7 +30,7 @@ class SORDetails:
 
     @staticmethod
     def build_from(order: Order) -> 'SORDetails':
-        sor_ctx = order.sor_ctx
+        sor_ctx: SorContext = order.sor_ctx
         return SORDetails(
             lead_qty=order.qty,
             last_qty=sor_ctx.last_qty,
