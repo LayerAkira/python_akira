@@ -1,5 +1,5 @@
 requests
-starknet-py>=0.20.0
+starknet-py>=0.24.2
 toml
 websockets
-aioconsole
+aioconsole>=0.7.0

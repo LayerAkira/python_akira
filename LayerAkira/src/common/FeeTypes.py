@@ -10,6 +10,7 @@ class FixedFee:
     recipient: ContractAddress
     maker_pbips: int
     taker_pbips: int
+    apply_to_receipt_amount: bool = True
 
     def __post_init__(self):
         assert isinstance(self.recipient, ContractAddress)
@@ -20,7 +21,7 @@ class GasFee:
     gas_per_action: int
     fee_token: ERC20Token
     max_gas_price: int
-    conversion_rate: Tuple[int, int]  # conversion rate to
+    conversion_rate: Tuple[float, float]  # conversion rate to
 
 
 @dataclass

@@ -27,5 +27,20 @@ def precise_to_price_convert(value: str, decimals: int) -> int:
         return int(before_point + after_point + decimals)
 
 
+def precise_from_price_to_str_convert(value: int, decimals: int) -> str:
+    if value == 0: return '0'
+    value_str = str(value)
+    if len(value_str) <= decimals:
+        return '0.' + '0' * (decimals - len(value_str)) + value_str.rstrip('0') or '0'
+
+    before_point = value_str[:-decimals]
+    after_point = value_str[-decimals:].rstrip('0')
+
+    if not after_point:
+        return before_point
+
+    return before_point + '.' + after_point
+
+
 def random_int(to=100000000):
     return abs(int(random() * to))

@@ -12,7 +12,8 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.Responses import TableLevel, BBO, Snapshot, Table, Trade, ExecReport, OrderStatus, \
-    OrderMatcherResult
+    OrderMatcherResult, CancelAllReport, FailProcessingReport, TxHashRollupReport
+from LayerAkira.src.common.common import precise_to_price_convert
 
 
 class Stream(str, Enum):
@@ -29,7 +30,7 @@ class WsClient:
     """
 
     # If None message emitted -> disconnection happened
-    ClientCallback = Callable[[Optional[Union[BBO, Snapshot, Trade, ExecReport]]], Awaitable[None]]
+    ClientCallback = Callable[[Optional[Union[BBO, Snapshot, Trade, ExecReport, CancelAllReport]]], Awaitable[None]]
 
     @dataclass
     class Job:
@@ -38,7 +39,8 @@ class WsClient:
         response: Dict
         event: asyncio.Event
 
-    def __init__(self, q_listen_key_cb: Callable[[ContractAddress], Awaitable[str]],
+    def __init__(self, erc_to_decimals: Dict[ERC20Token, int],
+                 q_listen_key_cb: Callable[[ContractAddress], Awaitable[str]],
                  exchange_wss_host='http://localhost:8888/ws', timeout=5, verbose=False):
         """
 
@@ -57,6 +59,7 @@ class WsClient:
         self.ws = None
         self._running = False
         self._terminated = False
+        self._erc_to_decimals = erc_to_decimals
 
     async def run_stream_listener(self, signer: ContractAddress, restart=False, cooldown_sec=5,
                                   **kwargs):
@@ -78,9 +81,9 @@ class WsClient:
                     logging.warning('Failed to query listen key')
                     return
                 if self._verbose: logging.info(f'Connecting {self._exchange_wss_host}')
-                async with websockets.connect(uri=self._exchange_wss_host,
-                                              extra_headers={'Authorization': listen_key, 'Signer': signer.as_str()},
-                                              **kwargs) as ws:
+                async with websockets.connect(
+                        uri=f'{self._exchange_wss_host}?listenKey={listen_key}&signer={signer.as_str()}',
+                        **kwargs) as ws:
                     self.ws = ws
                     if self._verbose: logging.info(f'Connected to {self._exchange_wss_host}')
                     async for message in ws:
@@ -133,13 +136,17 @@ class WsClient:
             logging.warning(f'Unknown stream {stream} for packet  {d}')
             return
         if stream in [Stream.BBO, Stream.TRADE, Stream.BOOK_DELTA]:
-            b, q = d['pair'].split('-')
+            b, q = d['pair']['base'], d['pair']['quote']
             pair = TradedPair(ERC20Token(b), ERC20Token(q))
             stream_id = (hash((stream, hash(pair), d['ecosystem'])))
-            await self._subscribers[stream_id](self._parse_md(d['result'], Stream(stream)))
+            data = self._parse_md(d, Stream(stream))
+            if data is not None:
+                await self._subscribers[stream_id](data)
         elif stream == Stream.FILLS:
-            stream_id = hash((Stream.FILLS.value, ContractAddress(d['result']['client'])))
-            await self._subscribers[stream_id](self._parse_md(d['result'], Stream(stream)))
+            stream_id = hash((Stream.FILLS.value, ContractAddress(d['client'])))
+            data = self._parse_md(d, Stream(stream))
+            if data is not None:
+                await self._subscribers[stream_id](data)
         else:
             logging.warning(f'Unknown packet {d}')
 
@@ -156,8 +163,8 @@ class WsClient:
         self._idx += 1
         req = {
             'action': 'subscribe', 'id': self._idx,
-            'stream': stream.value, 'base': traded_pair.base.value, 'quote': traded_pair.quote.value,
-            'ecosystem_book': ecosystem_book}
+            'stream': stream.value, 'ticker': {'base': traded_pair.base.value, 'quote': traded_pair.quote.value,
+                                               'ecosystem_book': ecosystem_book}}
         stream_id = (hash((stream.value, hash(traded_pair), ecosystem_book)))
         return await self._subscribe(cb, req, stream_id, self._idx)
 
@@ -196,24 +203,67 @@ class WsClient:
         data = self._jobs.pop(req.idx)
         return data.response
 
-    @staticmethod
-    def _parse_md(d: Dict, stream: Stream):
+    def _parse_md(self, data: Dict, stream: Stream):
+        if 'pair' in data:
+            pair = TradedPair(ERC20Token(data['pair']['base']), ERC20Token(data['pair']['quote']))
+            b_decimals, q_decimals = self._erc_to_decimals[pair.base], self._erc_to_decimals[pair.quote]
+
+        d = data['result']
         if stream == Stream.BBO:
             def retrieve_lvl(data: List):
-                return TableLevel(data[0], data[1]) if len(data) > 0 else None
+                return TableLevel(precise_to_price_convert(data[0], q_decimals),
+                                  precise_to_price_convert(data[1], b_decimals), data[2]) if len(data) > 0 else None
 
             return BBO(retrieve_lvl(d['bid']), retrieve_lvl(d['ask']), d['time'])
         elif stream == Stream.BOOK_DELTA:
             return Snapshot(
-                Table([TableLevel(x[0], x[1]) for x in d['bids']], [TableLevel(x[0], x[1]) for x in d['asks']]),
-                d['msg_id'], d['time']
+                Table([TableLevel(
+                    precise_to_price_convert(x[0], q_decimals),
+                    precise_to_price_convert(x[1], b_decimals),
+                    x[2]) for x in d['bids']],
+                    [TableLevel(
+                        precise_to_price_convert(x[0], q_decimals),
+                        precise_to_price_convert(x[1], b_decimals),
+                        x[2]) for x in d['asks']]),
+                int(d['msg_id']), d['time']
             )
         elif stream == Stream.TRADE:
-            return Trade(d['price'], d['base_qty'], d['is_sell_side'], d['time'])
+            return Trade(precise_to_price_convert(d['price'], q_decimals),
+                         precise_to_price_convert(d['base_qty'], b_decimals),
+                         d['is_sell_side'],
+                         d['time'])
         elif stream == Stream.FILLS:
-            b, q = d['pair'].split('-')
-            return ExecReport(ContractAddress(d['client']), TradedPair(ERC20Token(b), ERC20Token(q)),
-                              d['fill_price'], d['fill_base_qty'], d['fill_quote_qty'],
-                              d['acc_base_qty'], d['acc_quote_qty'], d['hash'], d['is_sell_side'],
-                              OrderStatus(d['status']),
-                              OrderMatcherResult(d['matcher_result']))
+            try:
+                if 'hash' in d:
+                    return ExecReport(ContractAddress(data['client']), pair,
+                                      precise_to_price_convert(d['fill_price'], q_decimals),
+                                      precise_to_price_convert(d['fill_base_qty'], b_decimals),
+                                      precise_to_price_convert(d['fill_quote_qty'], q_decimals),
+                                      precise_to_price_convert(d['acc_base_qty'], b_decimals),
+                                      precise_to_price_convert(d['acc_quote_qty'], q_decimals),
+                                      int(d['hash'], 16),
+                                      d['is_sell_side'],
+                                      OrderStatus(d['status']),
+                                      OrderMatcherResult(d['matcher_result']),
+                                      d.get('source', None)
+                                      )
+                elif 'report_type' in d:
+                    return FailProcessingReport(ContractAddress(data['client']), d['report_type'],
+                                                int(d['req_hash'], 16), int(d['entity_hash'], 16),
+                                                d.get('error_code_orderbook', None))
+                elif 'tx_hash' in d:
+                    return TxHashRollupReport(
+                        tx_hash=int(d['tx_hash'], 16),
+                        order_hash=int(d['order_hash'], 16),
+                        client=ContractAddress(data['client']),
+                        source=d['source'],
+                        old_tx_hash=int(d.get('old_tx_hash'), 16) if d.get('old_tx_hash') is not None else None,
+                    )
+                else:
+
+                        return CancelAllReport(ContractAddress(data['client']), int(d['cancel_ticker_hash'], 16),
+                                               TradedPair(ERC20Token(data['pair']['base']),
+                                                          ERC20Token(data['pair']['quote'])))
+            except Exception as e:
+                logging.exception(f'Failed to parse due {e} this\n: {data}')
+            raise e

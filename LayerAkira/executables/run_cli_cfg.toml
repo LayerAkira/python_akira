@@ -1,12 +1,18 @@
-node_url = "https://starknet-testnet.blastapi.io/c973c229-c997-4595-b9ed-0127335f467c"
-exchange_address = '0x74c1fba81e28509721806b1e26814291fd453667605a2f2922ae1cc001d7b0f'
-http = 'http://localhost:4431'
-wss = 'ws://localhost:4432/ws'
+node_url = "https://starknet-sepolia.blastapi.io/65af4368-854f-4423-a163-133906f031ce/rpc/v0_7"
+#0x6ad5b61033022fcc3000f1265a39fbfd4b72130a48477469e27d2db6e274aec
+exchange_address = '0x0185C316d04a7531b63817706c8b0A231965985325E107810B75fb3C568E3F3e'
+#http = 'http://18.183.87.4:4431'
+#wss = 'ws://18.183.87.4:4432/ws'
+http = 'http://0.0.0.0:4431'
+wss = 'ws://0.0.0.0:4432/ws'
 gas_oracle_skew_multiplier = 1.25
 is_testnet = true
 verbose = true
 
-trading_account = {account_address ='0x0541cf2823e5d004E9a5278ef8B691B97382FD0c9a6B833a56131E12232A7F0F', public_key='0x6599a0c34699a5c48ae6ff359decc0618ce982be00654f2b12945cae5bb6788', private_key=''}
+# 0x76da5762215c6a49d448aa8ec6f7bbb3067f3ebb36175827d29436ac30cc156 new contract
+
+#old = '0x6ad5b61033022fcc3000f1265a39fbfd4b72130a48477469e27d2db6e274aec'
+trading_account = {account_address ='0x033e29bc9B537BAe4e370559331E2bf35b434b566f41a64601b37f410f46a580', public_key='0x03e56dd52f96df3bc130f7a0b241dfed26b4a280d28a199e1e857f6d8acbb666', private_key="0x02eba7e4f6cb7b39d6ead485519e37ec493b44e9b5e7ce49bcd3222394563786"}
 
 [[gas_action]]
 ecosystem = true
@@ -35,11 +41,6 @@ address = "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
 decimals = 18
 
 [[ERC20]]
-symbol = "USDC"
-address = "0x5a643907b9a4bc6a55e9069c4fd5fd1f5c79a22470690f75556c4736e34426"
-decimals = 6
-
-[[ERC20]]
-symbol = "USDT"
-address = "0x0386e8d061177f19b3b485c20e31137e6f6bc497cc635ccdfcab96fadf5add6a"
-decimals = 6
+symbol = "STRK"
+address = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d"
+decimals = 18

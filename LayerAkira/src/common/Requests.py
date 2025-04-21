@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
+from LayerAkira.src.common.ExecuteOutside import ExecuteOutsideCall, Call
 from LayerAkira.src.common.FeeTypes import OrderFee, GasFee
 from LayerAkira.src.common.TradedPair import TradedPair
 
@@ -16,6 +17,18 @@ class Side(Enum):
 
     def __str__(self):
         return str(self.value)
+
+
+@dataclass(frozen=True)
+class SpotTicker:
+    """
+    A  data class that represents a spot ticker.
+    Attributes:
+        pair (TradedPair): The traded pair associated with this ticker.
+        is_ecosystem_book (bool): A flag indicating if it is an ecosystem book or router.
+    """
+    pair: TradedPair
+    is_ecosystem_book: bool
 
 
 @dataclass
@@ -71,22 +84,33 @@ class Constraints:
 
 
 @dataclass
+class SignScheme(str, Enum):
+    ECDSA = "ecdsa curve"
+    ACCOUNT = "account"
+    DIRECT = "direct"
+    NOT_SPECIFIED = ""
+
+
+@dataclass
 class Order:
     maker: ContractAddress
     price: int
     qty: Quantity
     ticker: TradedPair
     fee: OrderFee
-    constraints:Constraints
+    constraints: Constraints
     salt: int
     flags: OrderFlags
     sign: Tuple[int, int]
     router_sign: Tuple[int, int]
-    version: int
+    source: str = 'layerakira'
+    sign_scheme: SignScheme = None
+    snip9_calldata: Optional[ExecuteOutsideCall] = None
 
     def __post_init__(self):
         assert isinstance(self.maker, ContractAddress)
         assert isinstance(self.constraints.router_signer, ContractAddress)
+        assert self.sign is not None, 'Sign scheme for order should be specified'
 
     def is_passive_order(self):
         return not self.type == OrderType.MARKET and self.post_only
@@ -142,6 +166,7 @@ class Order:
 class CancelRequest:
     maker: ContractAddress
     order_hash: Optional[int]
+    exchange_ticker: Optional[SpotTicker]  # ignored in case order hash defined
     salt: int
     sign: Tuple[int, int]
 
@@ -153,6 +178,7 @@ class IncreaseNonce:
     gas_fee: GasFee
     salt: int
     sign: Tuple[int, int]
+    sign_scheme: SignScheme
 
 
 @dataclass
@@ -164,6 +190,7 @@ class Withdraw:
     sign: Tuple[int, int]
     gas_fee: GasFee
     receiver: ContractAddress
+    sign_scheme: SignScheme
 
     def __str__(self):
         fields = [
@@ -177,3 +204,19 @@ class Withdraw:
     def __post_init__(self):
         assert isinstance(self.maker, ContractAddress)
         assert isinstance(self.receiver, ContractAddress)
+
+
+@dataclass
+class Snip9OrderMatch:
+    """
+    msghash of following:
+    approve,
+    ...,
+    approve,
+    placeTakerOrder(order:order)
+
+    """
+    maker: ContractAddress
+    approves: List[Call]
+    place_order: Call
+    outside_execute: ExecuteOutsideCall

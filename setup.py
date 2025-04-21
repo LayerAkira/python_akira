@@ -15,7 +15,7 @@ with open(path.join(HERE, 'README.md'), encoding='utf-8') as f:
 # This call to setup() does all the work
 setup(
     name="LayerAkira",
-    version="1.0.0a16",
+    version="1.0.0a50",
     description="library for interaction with LayerAkira exchange",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -36,13 +36,17 @@ setup(
         "Programming Language :: Python :: 3.12",
         "Operating System :: OS Independent"
     ],
-    packages=["LayerAkira", "LayerAkira.src", "LayerAkira.src.common", "LayerAkira.executables"],
+    packages=["LayerAkira", "LayerAkira.src", "LayerAkira.src.common", "LayerAkira.executables",
+              "LayerAkira.src.hasher"],
     include_package_data=True,
     install_requires=[
         'websockets',
         'toml',
-        'starknet-py>=0.18.3',
+        'starknet-py>=0.22.0',
         'requests',
-        'aioconsole'
+        'aioconsole>=0.7.0'
     ]
 )
+
+
+# 0x06fdf8d651291a0449846e49b01cebb47ea5d88a77ca846f6a6cdc33e11e4110

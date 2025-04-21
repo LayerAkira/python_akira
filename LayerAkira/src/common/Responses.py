@@ -12,26 +12,25 @@ from LayerAkira.src.common.TradedPair import TradedPair
 class UserInfo:
     nonce: int
     fees: Dict[TradedPair, Tuple[int, int]]
-    balances: Dict[ERC20Token, Tuple[int, int]]
+    balances: Dict[ERC20Token, Tuple[str, str]]
 
 
 @dataclass
-class FakeRouterData:
+class RouterDetails:
     taker_pbips: int
-    fee_recipient: ContractAddress
-    max_taker_pbips: int
-    router_signer: ContractAddress
     maker_pbips: int
-    router_signature: Tuple[int, int]
+    fee_recipient: ContractAddress
+    router_signer: ContractAddress
 
 
 @dataclass
 class TableLevel:
     price: int
     volume: int
+    num_orders: int
 
     def __str__(self):
-        return f'Lvl(px={self.price},vol={self.volume})'
+        return f'Lvl(px={self.price},vol={self.volume},orders={self.num_orders})'
 
 
 @dataclass
@@ -89,6 +88,7 @@ class ReducedOrderInfo:
     order_flags: OrderFlags
     stp: STPMode
     expiration_time: int
+    source: str
 
 
 @dataclass
@@ -104,6 +104,31 @@ class ExecReport:
     is_sell_side: bool
     status: OrderStatus
     mather_result: OrderMatcherResult
+    taker_source: Optional[str]
+
+
+@dataclass
+class CancelAllReport:
+    client: ContractAddress
+    hash: int
+    pair: TradedPair
+
+
+@dataclass
+class FailProcessingReport:
+    client: ContractAddress
+    report_type: str
+    req_hash: int
+    entity_hash: int
+    error_code_orderbook:Optional[str]
+
+@dataclass
+class TxHashRollupReport:
+    tx_hash: int
+    order_hash: int
+    client: ContractAddress
+    source: str
+    old_tx_hash: Optional[int] = None
 
 
 @dataclass

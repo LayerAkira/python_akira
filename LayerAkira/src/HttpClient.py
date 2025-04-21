@@ -1,33 +1,40 @@
 import logging
-from typing import Dict, Optional, List, Union
+from typing import Dict, Optional, List, Union, Tuple, Callable
 
-from aiohttp import ClientSession
-from starknet_py.hash.utils import message_signature
+from aiohttp import ClientSession, ClientTimeout
 from starknet_py.utils.typed_data import TypedData
 
-from LayerAkira.src.Hasher import SnHasher
-from LayerAkira.src.OrderSerializer import SimpleOrderSerializer
+from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
+from LayerAkira.src.OrderSerializer import SimpleOrderSerializer, serialize_gas_fee
 from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
 from LayerAkira.src.common.Requests import Withdraw, Order, CancelRequest, OrderFlags, STPMode, IncreaseNonce, Quantity, \
-    Constraints
+    Constraints, SpotTicker, SignScheme
 from LayerAkira.src.common.TradedPair import TradedPair
-from LayerAkira.src.common.common import random_int
-from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, TableLevel, Snapshot, Table, FakeRouterData, \
+from LayerAkira.src.common.common import random_int, precise_to_price_convert, precise_from_price_to_str_convert
+from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, TableLevel, Snapshot, Table, RouterDetails, \
     UserInfo, BBO, \
     OrderStatus, OrderStateInfo
 from LayerAkira.src.common.common import Result
 
 
 def get_typed_data(message: int, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
+    challenge = (
+        'Sign in to LayerAkira',
+        "\tChallenge:",
+        hex(message)
+    )
     return TypedData.from_dict(
-        {"domain": {"name": name, "chainId": chain_id, "version": version},
+        {"domain": {"name": name, "version": version, "chainId": hex(chain_id)},
          "types": {
              "StarkNetDomain": [{"name": "name", "type": "felt"},
-                                {"name": "chainId", "type": "felt"}, {"name": "version", "type": "felt"}],
-             "Message": [{"name": "message", "type": "felt"}],
-         }, "primaryType": "Message", "message": {"message": message}})
+                                {"name": "version", "type": "felt"}, {"name": "chainId", "type": "felt"}],
+             "Message": [{"name": "welcome", "type": "string"},
+                         {"name": "to", "type": "string"},
+                         {"name": "exchange", "type": "string"}],
+         }, "primaryType": "Message",
+         "message": {'welcome': challenge[0], 'to': challenge[1], 'exchange': challenge[2]}})
 
 
 class AsyncApiHttpClient:
@@ -35,9 +42,11 @@ class AsyncApiHttpClient:
     Stateless Http client for interaction with LayerAkira exchange
     """
 
-    def __init__(self, sn_hasher: SnHasher,
-                 erc_to_addr: Dict[ERC20Token, ContractAddress],
+    def __init__(self, sn_hasher: SnTypedPedersenHasher,
+                 sign_cb: Callable[[int, int], Tuple[int, int]],
+                 erc_to_decimals: Dict[ERC20Token, int],
                  exchange_http_host='http://localhost:8080',
+                 http_client_timeout=ClientTimeout(total=2 * 60),
                  verbose=False):
         """
 
@@ -46,13 +55,13 @@ class AsyncApiHttpClient:
         :param exchange_http_host:
         :param verbose:
         """
-        self._http = ClientSession()
+        self._http = ClientSession(timeout=http_client_timeout)
         self._http_host = exchange_http_host
-        self._hasher: SnHasher = sn_hasher
-        self._erc_to_addr: Dict[ERC20Token, ContractAddress] = erc_to_addr
-        self._addr_to_erc: Dict[ContractAddress, ERC20Token] = {v: k for k, v in erc_to_addr.items()}
-        self._order_serder = SimpleOrderSerializer(self._erc_to_addr)
+        self._hasher: SnTypedPedersenHasher = sn_hasher
+        self._erc_to_decimals = erc_to_decimals
+        self._order_serder = SimpleOrderSerializer(erc_to_decimals)
         self._verbose = verbose
+        self._sign_cb = sign_cb
 
     async def close(self):
         await self._http.close()
@@ -63,14 +72,24 @@ class AsyncApiHttpClient:
         if msg.data is None: return msg
 
         url = f'{self._http_host}/sign/auth'
-        msg_hash = get_typed_data(msg.data, chain_id).message_hash(account.as_int())
+        msg_hash = get_typed_data(int(msg.data), chain_id).message_hash(account.as_int())
         return await self._post_query(url, {'msg': msg.data,
-                                            'signature': list(message_signature(msg_hash, int(pk, 16)))})
+                                            'signature': [hex(x) for x in list(self._sign_cb(msg_hash, int(pk, 16)))]})
 
     async def query_gas_price(self, jwt: str) -> Result[int]:
-        return await self._get_query(f'{self._http_host}/gas/price', jwt)
+        gas_px = await self._get_query(f'{self._http_host}/gas/price', jwt)
+        if gas_px.data is not None: gas_px.data = int(gas_px.data)
+        return gas_px
 
-    async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, mode: int = 1) -> Result[
+    async def get_conversion_rate(self, token: ERC20Token, jwt: str) -> Result[Tuple[int, int]]:
+        rate = await self._get_query(f'{self._http_host}/info/conversion_rate?token={token}', jwt)
+        if rate.data is not None:
+            rate.data = (precise_to_price_convert(rate.data[0], self._erc_to_decimals[ERC20Token.STRK]),
+                         precise_to_price_convert(rate.data[1], self._erc_to_decimals[token]))
+
+        return rate
+
+    async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, active:int = 1, mode: int = 1) -> Result[
         Union[OrderInfo, ReducedOrderInfo]]:
         """
 
@@ -80,10 +99,19 @@ class AsyncApiHttpClient:
         :param mode: 1 for full data, 2 for reduced data
         :return:
         """
-        url = f'{self._http_host}/user/order?order_hash={order_hash}&trading_account={acc}&mode={mode}'
+        url = f'{self._http_host}/user/order?order_hash={order_hash}&trading_account={acc}&mode={mode}&active={active}'
         resp = await self._get_query(url, jwt)
         if resp.data is None: return resp
         return Result(self._parse_order_response(resp.data, mode))
+
+
+    async def get_order_router(self, acc: ContractAddress, jwt: str, t_acc: ContractAddress, order_hash: int, active:int = 1, mode: int = 1) -> Result[
+        Union[OrderInfo, ReducedOrderInfo]]:
+        url = f'{self._http_host}/user/order_router?order_hash={order_hash}&trading_account={t_acc}&mode={mode}&active={active}'
+        resp = await self._get_query(url, jwt)
+        if resp.data is None: return resp
+        return Result(self._parse_order_response(resp.data, mode))
+
 
     async def get_orders(self, acc: ContractAddress, jwt: str, mode: int = 1, limit=20, offset=0) -> \
             Result[List[Union[ReducedOrderInfo, OrderInfo]]]:
@@ -93,94 +121,114 @@ class AsyncApiHttpClient:
         return Result([self._parse_order_response(x, mode) for x in resp.data])
 
     async def get_bbo(self, jwt: str, base: ERC20Token, quote: ERC20Token, ecosystem_book: bool) -> Result[BBO]:
-        url = f'{self._http_host}/book/bbo?base={self._erc_to_addr[base]}' \
-              f'&quote={self._erc_to_addr[quote]}&to_ecosystem_book={int(ecosystem_book)}'
+        url = f'{self._http_host}/book/bbo?base={base}&quote={quote}&to_ecosystem_book={int(ecosystem_book)}'
         resp = await self._get_query(url, jwt)
         if resp.data is None: return resp
 
-        def retrieve_lvl(data: Dict): return TableLevel(data['price'], data['volume']) if len(data) > 0 else None
+        def retrieve_lvl(data: Dict): return TableLevel(
+            precise_to_price_convert(data['price'], self._erc_to_decimals[quote]),
+            int(precise_to_price_convert(data['volume'], self._erc_to_decimals[base])),
+            data['orders']) if len(data) > 0 else None
 
         return Result(BBO(retrieve_lvl(resp.data['bid']), retrieve_lvl(resp.data['ask']), 0))
 
     async def get_snapshot(self, jwt: str, base: ERC20Token, quote: ERC20Token, ecosystem_book: bool) -> Result[
         Snapshot]:
-        url = f'{self._http_host}/book/snapshot?base={self._erc_to_addr[base]}' \
-              f'&quote={self._erc_to_addr[quote]}&to_ecosystem_book={int(ecosystem_book)}'
+        url = f'{self._http_host}/book/snapshot?base={base}' \
+              f'&quote={quote}&to_ecosystem_book={int(ecosystem_book)}'
         resp = await self._get_query(url, jwt)
         if resp.data is None: return resp
         levels = resp.data['levels']
         return Result(Snapshot(
-            Table([TableLevel(x[0], x[1]) for x in levels['bids']], [TableLevel(x[0], x[1]) for x in levels['asks']]),
-            levels['msg_id'])
+            Table(
+                [TableLevel(int(precise_to_price_convert(x[0], self._erc_to_decimals[quote])),
+                            int(precise_to_price_convert(x[1], self._erc_to_decimals[base])), x[2]) for x in
+                 levels['bids']],
+                [TableLevel(int(precise_to_price_convert(x[0], self._erc_to_decimals[quote])),
+                            int(precise_to_price_convert(x[1], self._erc_to_decimals[base])), x[2]) for x in
+                 levels['asks']]),
+            int(levels['msg_id']))
         )
 
-    async def increase_nonce(self, pk: str, jwt: str, maker: ContractAddress, new_nonce: int, gas_fee: GasFee):
-        req = IncreaseNonce(maker, new_nonce, gas_fee, random_int(), (0, 0))
-        req.sign = message_signature(self._hasher.hash(req), int(pk, 16))
-        data = {'maker': req.maker.as_str(), 'sign': req.sign,
+    async def increase_nonce(self, pk: str, jwt: str, maker: ContractAddress, new_nonce: int, gas_fee: GasFee, sign_scheme:SignScheme):
+        req = IncreaseNonce(maker, new_nonce, gas_fee, random_int(), (0, 0), sign_scheme)
+        req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign],
                 'new_nonce': new_nonce,
-                'salt': req.salt, 'gas_fee': {
-                'fee_token': self._erc_to_addr[gas_fee.fee_token].as_str(),
-                'max_gas_price': gas_fee.max_gas_price,
-                'conversion_rate': gas_fee.conversion_rate,
-                'gas_per_action': gas_fee.gas_per_action
-            }
+                'salt': hex(req.salt), 'gas_fee': serialize_gas_fee(gas_fee, self._erc_to_decimals)[1],
+                'sign_scheme': req.sign_scheme.value
                 }
         return await self._post_query(f'{self._http_host}/increase_nonce', data, jwt)
 
-    async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: Optional[int]) -> Result[int]:
+    async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: int, sign_scheme:SignScheme) -> Result[int]:
         """
+        :param sign_scheme:
         :param pk: private key of signer for trading account
         :param jwt: jwt token
         :param maker: trading account
-        :param order_hash: if order_hash is None or 0, the request treated as cancel_all
+        :param order_hash: hash of the order
         :return: poseidon hash of request
         """
-        if order_hash is None: order_hash = 0
-        req = CancelRequest(maker, order_hash, random_int(), (0, 0))
-        req.sign = message_signature(self._hasher.hash(req), int(pk, 16))
+        req = CancelRequest(maker, order_hash, None, random_int(), (0, 0))
+        req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
         return await self._post_query(
-            f'{self._http_host}/cancel_order' if order_hash != 0 else f'{self._http_host}/cancel_all',
-            {'maker': req.maker.as_str(), 'sign': req.sign, 'order_hash': order_hash, 'salt': req.salt}, jwt)
+            f'{self._http_host}/cancel_order',
+            {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': hex(order_hash), 'salt': hex(req.salt),
+             'ticker': {'base': '0x0', 'quote': '0x0', 'to_ecosystem_book': True},'sign_scheme':sign_scheme.value
+             }, jwt)
+
+    async def cancel_all_orders(self, pk: str, jwt: str, maker: ContractAddress, ticker: SpotTicker,sign_scheme:SignScheme) -> Result[int]:
+        """
+        :param sign_scheme:
+        :param pk: private key of signer for trading account
+        :param jwt: jwt token
+        :param maker: trading account
+        :param ticker: ticker for which orders should be cancelled
+        :return: poseidon hash of request
+        """
+        req = CancelRequest(maker, None, ticker, random_int(), (0, 0))
+        req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        return await self._post_query(
+            f'{self._http_host}/cancel_all',
+            {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': 0, 'salt': hex(req.salt),
+             'ticker': {'base': ticker.pair.base, 'quote': ticker.pair.quote,
+                        'to_ecosystem_book': ticker.is_ecosystem_book},
+             'sign_scheme': sign_scheme.value
+             }, jwt)
 
     async def withdraw(self, pk: str, jwt: str, maker: ContractAddress, token: ERC20Token, amount: int,
                        gas_fee: GasFee) -> Result[int]:
-        req = Withdraw(maker, token, amount, random_int(), (0, 0), gas_fee, maker)
+        req = Withdraw(maker, token, amount, random_int(), (0, 0), gas_fee, maker, SignScheme.ECDSA)
 
-        req.sign = message_signature(self._hasher.hash(req), int(pk, 16))
-        data = {'maker': req.maker.as_str(), 'sign': req.sign, 'token': self._erc_to_addr[req.token].as_str(),
-                'salt': req.salt, 'receiver': req.receiver.as_str(),
-                'amount': req.amount, 'gas_fee': {
-                'fee_token': self._erc_to_addr[gas_fee.fee_token].as_str(),
-                'max_gas_price': gas_fee.max_gas_price,
-                'conversion_rate': gas_fee.conversion_rate,
-                'gas_per_action': gas_fee.gas_per_action
-            }
+        req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'token': req.token,
+                'salt': hex(req.salt), 'receiver': req.receiver.as_str(),
+                'amount': precise_from_price_to_str_convert(req.amount, self._erc_to_decimals[req.token]),
+                'gas_fee': serialize_gas_fee(gas_fee, self._erc_to_decimals)[1],
+                'sign_scheme': req.sign_scheme.value
                 }
         return await self._post_query(f'{self._http_host}/withdraw', data, jwt)
 
     async def query_listen_key(self, jwt: str) -> Result[str]:
         return await self._get_query(f'{self._http_host}/user/listen_key', jwt)
 
-    async def place_order(self, jwt: str, order: Order) -> Result[int]:
+    async def place_order(self, jwt: str, order: Order) -> Result[str]:
         return await self._post_query(f'{self._http_host}/place_order', self._order_serder.serialize(order), jwt)
 
-    async def query_fake_router_data(self, jwt: str, order: Order) -> Result[FakeRouterData]:
+    async def query_router_details(self, jwt: str) -> Result[RouterDetails]:
         """
 
         :param jwt:  jwt token
-        :param order: Order that fake router would sign
-        :return: return data for order that should be inserted
-
+        :return: return data for order that should be inserted for router orders
         Flow ->
-            1) user sending unsigned order, fake router sign it and return FakeRouterData
+            1) user sending unsigned order, it return RouterDetails
             2) user fill order with this data and sign this order and place order to exchange
         """
-        res = await self._post_query(f'{self._http_host}/router_sign', self._order_serder.serialize(order), jwt)
+        res = await self._get_query(f'{self._http_host}/info/router_details', jwt)
         if res.data is None: return res
-        return Result(FakeRouterData(res.data['taker_pbips'], ContractAddress(res.data['fee_recipient']),
-                                     res.data['max_taker_pbips'], ContractAddress(res.data['router_signer']),
-                                     0, tuple(res.data['router_signature'])))
+        return Result(RouterDetails(res.data['routerTakerPbips'], res.data['routerMakerPbips'],
+                                    ContractAddress(res.data['routerFeeRecipient']),
+                                    ContractAddress(res.data['routerSigner'])))
 
     async def get_trading_acc_info(self, acc: ContractAddress, jwt: str) -> Result[UserInfo]:
         url = f'{self._http_host}/user/user_info?trading_account={acc}'
@@ -189,12 +237,12 @@ class AsyncApiHttpClient:
         info = info.data
         fees_d = {}
         balances = {}
-        for pair, fees in info['fees']:
-            fees_d[TradedPair(self._addr_to_erc[ContractAddress(pair[0])],
-                              self._addr_to_erc[ContractAddress(pair[1])])] = fees
+        for data in info['fees']:
+            fees_d[TradedPair(ERC20Token(data['base']), ERC20Token(data['quote']))] = (
+                int(data['fee'][0]), int(data['fee'][1]))
 
-        for token, total, locked in info['balances']:
-            balances[self._addr_to_erc[ContractAddress(token)]] = (total, locked)
+        for data in info['balances']:
+            balances[ERC20Token(data['token'])] = (data['balance'], data['locked'])
 
         return Result(UserInfo(info['nonce'], fees_d, balances))
 
@@ -215,43 +263,52 @@ class AsyncApiHttpClient:
         return Result(None, resp['code'], resp['error'])
 
     def _parse_order_response(self, d: Dict, mode):
+        pair = TradedPair(ERC20Token(d['ticker']['base']), ERC20Token(d['ticker']['quote']))
+
         state_info = OrderStateInfo(
-            d['state']['filled_base_amount'],
-            d['state']['filled_quote_amount'],
+            precise_to_price_convert(d['state']['filled_base_amount'], self._erc_to_decimals[pair.base]),
+            precise_to_price_convert(d['state']['filled_quote_amount'], self._erc_to_decimals[pair.quote]),
             d['state']['cur_number_of_swaps'],
             OrderStatus(d['state']['status']),
-            d['state']['limit_price']
+            precise_to_price_convert(d['state']['limit_price'], self._erc_to_decimals[pair.quote]) if d['state'][
+                                                                                                          'limit_price'] is not None else None
         )
         if mode == 2:
             return ReducedOrderInfo(
                 ContractAddress(d['maker']),
-                d['hash'],
+                int(d['hash'], 16),
                 state_info,
-                d['price'],
-                TradedPair(self._addr_to_erc[ContractAddress(d['ticker'][0])],
-                           self._addr_to_erc[ContractAddress(d['ticker'][1])]),
-                Quantity(d['qty']['base_qty'], d['qty']['quote_qty'], 0),
+                precise_to_price_convert(d['price'], self._erc_to_decimals[pair.quote]),
+                pair,
+                Quantity(
+                    precise_to_price_convert(d['qty']['base_qty'], self._erc_to_decimals[pair.base]),
+                    precise_to_price_convert(d['qty']['quote_qty'], self._erc_to_decimals[pair.quote]),
+                    10 ** self._erc_to_decimals[pair.base]),
                 OrderFlags(*[bool(x) for x in d['flags']]),
                 STPMode(d['stp']),
-                d['expiration_time']
+                d['expiration_time'],
+                d['source']
             )
         elif mode == 1:
             trade_fee, router_fee, gas_fee = d['fee']['trade_fee'], d['fee']['router_fee'], d['fee']['gas_fee']
             return OrderInfo(
                 Order(
                     ContractAddress(d['maker']),
-                    d['price'],
-                    Quantity(d['qty']['base_qty'], d['qty']['quote_qty'], d['qty']['base_asset']),
-                    TradedPair(self._addr_to_erc[ContractAddress(d['ticker'][0])],
-                               self._addr_to_erc[ContractAddress(d['ticker'][1])]),
+                    precise_to_price_convert(d['price'], self._erc_to_decimals[pair.quote]),
+                    Quantity(
+                        precise_to_price_convert(d['qty']['base_qty'], self._erc_to_decimals[pair.base]),
+                        precise_to_price_convert(d['qty']['quote_qty'], self._erc_to_decimals[pair.quote]),
+                        10 ** self._erc_to_decimals[pair.base]),
+                    pair,
                     OrderFee(
                         FixedFee(ContractAddress(trade_fee['recipient']), trade_fee['maker_pbips'],
                                  trade_fee['taker_pbips']),
                         FixedFee(ContractAddress(router_fee['recipient']), router_fee['maker_pbips'],
                                  router_fee['taker_pbips']),
-                        GasFee(gas_fee['gas_per_action'], self._addr_to_erc[ContractAddress(gas_fee['fee_token'])],
-                               gas_fee['max_gas_price'],
-                               tuple(gas_fee['conversion_rate']))
+                        GasFee(gas_fee['gas_per_action'], ERC20Token(gas_fee['fee_token']),
+                               precise_to_price_convert(gas_fee['max_gas_price'],
+                                                        self._erc_to_decimals[ERC20Token(gas_fee['fee_token'])]),
+                               tuple(float(x) for x in gas_fee['conversion_rate']))
                     ),
                     Constraints(
                         d['constraints']['number_of_swaps_allowed'],
@@ -259,14 +316,15 @@ class AsyncApiHttpClient:
                         d['constraints']['created_at'],
                         STPMode(d['constraints']['stp']),
                         d['constraints']['nonce'],
-                        d['constraints']['min_receive_amount'],
+                        int(d['constraints']['min_receive_amount']),
                         ContractAddress(d['constraints']['router_signer']),
                     ),
-                    d['salt'],
+                    int(d['salt']),
                     OrderFlags(*[bool(x) for x in d['flags']]),
                     (0, 0),
                     (0, 0),
-                    d['version']
+                    d['source'],
+                    SignScheme(d['sign_scheme'])
                 ),
                 state_info
             )
