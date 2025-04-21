@@ -214,7 +214,7 @@ class WsClient:
                 return TableLevel(precise_to_price_convert(data[0], q_decimals),
                                   precise_to_price_convert(data[1], b_decimals), data[2]) if len(data) > 0 else None
 
-            return BBO(retrieve_lvl(d['bid']), retrieve_lvl(d['ask']), d['time'])
+            return BBO(retrieve_lvl(d['bid']), retrieve_lvl(d['ask']), d['time'], pair)
         elif stream == Stream.BOOK_DELTA:
             return Snapshot(
                 Table([TableLevel(
@@ -224,14 +224,14 @@ class WsClient:
                     [TableLevel(
                         precise_to_price_convert(x[0], q_decimals),
                         precise_to_price_convert(x[1], b_decimals),
-                        x[2]) for x in d['asks']]),
-                int(d['msg_id']), d['time']
+                        x[2]) for x in d['asks']]), int(d['msg_id']), pair,
+                d['time'], d.get('msg_ids_start', 0), d.get('msg_ids_end', 0)
             )
         elif stream == Stream.TRADE:
             return Trade(precise_to_price_convert(d['price'], q_decimals),
                          precise_to_price_convert(d['base_qty'], b_decimals),
                          d['is_sell_side'],
-                         d['time'])
+                         d['time'], pair)
         elif stream == Stream.FILLS:
             try:
                 if 'hash' in d:
@@ -261,9 +261,9 @@ class WsClient:
                     )
                 else:
 
-                        return CancelAllReport(ContractAddress(data['client']), int(d['cancel_ticker_hash'], 16),
-                                               TradedPair(ERC20Token(data['pair']['base']),
-                                                          ERC20Token(data['pair']['quote'])))
+                    return CancelAllReport(ContractAddress(data['client']), int(d['cancel_ticker_hash'], 16),
+                                           TradedPair(ERC20Token(data['pair']['base']),
+                                                      ERC20Token(data['pair']['quote'])))
             except Exception as e:
                 logging.exception(f'Failed to parse due {e} this\n: {data}')
             raise e

@@ -113,9 +113,9 @@ class AsyncApiHttpClient:
         return Result(self._parse_order_response(resp.data, mode))
 
 
-    async def get_orders(self, acc: ContractAddress, jwt: str, mode: int = 1, limit=20, offset=0) -> \
+    async def get_orders(self, acc: ContractAddress, jwt: str, mode: int = 1, limit=20, offset=0, is_active = True) -> \
             Result[List[Union[ReducedOrderInfo, OrderInfo]]]:
-        url = f'{self._http_host}/user/orders?mode={mode}&trading_account={acc}&limit={limit}&offset={offset}'
+        url = f'{self._http_host}/user/orders?mode={mode}&trading_account={acc}&limit={limit}&offset={offset}&is_active={bool(is_active)}'
         resp = await self._get_query(url, jwt)
         if resp.data is None: return resp
         return Result([self._parse_order_response(x, mode) for x in resp.data])
@@ -169,7 +169,7 @@ class AsyncApiHttpClient:
         :param order_hash: hash of the order
         :return: poseidon hash of request
         """
-        req = CancelRequest(maker, order_hash, None, random_int(), (0, 0))
+        req = CancelRequest(maker, order_hash, None, random_int(), (0, 0), sign_scheme)
         req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
         return await self._post_query(
             f'{self._http_host}/cancel_order',
@@ -186,7 +186,7 @@ class AsyncApiHttpClient:
         :param ticker: ticker for which orders should be cancelled
         :return: poseidon hash of request
         """
-        req = CancelRequest(maker, None, ticker, random_int(), (0, 0))
+        req = CancelRequest(maker, None, ticker, random_int(), (0, 0), sign_scheme)
         req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
         return await self._post_query(
             f'{self._http_host}/cancel_all',

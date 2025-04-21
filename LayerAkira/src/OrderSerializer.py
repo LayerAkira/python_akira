@@ -2,7 +2,7 @@ from typing import Dict, Tuple, Union, Optional
 
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import FixedFee, GasFee
-from LayerAkira.src.common.Requests import Order, ExecuteOutsideCall
+from LayerAkira.src.common.Requests import Order, ExecuteOutsideCall, SorContext
 from LayerAkira.src.common.common import precise_from_price_to_str_convert
 
 
@@ -12,7 +12,6 @@ def serialize_fixed_fee(fee: FixedFee) -> Tuple[
         'recipient': fee.recipient.as_str(),
         'maker_pbips': fee.maker_pbips,
         'taker_pbips': fee.taker_pbips,
-        'apply_to_receipt_amount': fee.apply_to_receipt_amount
     }
 
 
@@ -48,11 +47,45 @@ def serialize_snip9_calldata(sinp_9_calldata: Optional[ExecuteOutsideCall]) -> O
         'version': sinp_9_calldata.version,
         'signature': [hex(x) for x in sinp_9_calldata.signature],
     }
-
-
 class SimpleOrderSerializer:
     def __init__(self, erc_to_decimals: Dict[ERC20Token, int]):
         self._erc_to_decimals = erc_to_decimals
+
+    def sor_context_to_json(self, order: Order) -> dict:
+        if not order.sor_ctx:
+            return None
+
+        sor_ctx = order.sor_ctx
+
+        path_json = []
+        for path_item in sor_ctx.path:
+            path_json.append({
+                "price": precise_from_price_to_str_convert(path_item.price, self._erc_to_decimals[path_item.ticker.quote]),
+                "ticker": [path_item.ticker.base.value, path_item.ticker.quote.value],
+                "is_sell_side": path_item.is_sell_side,
+                "order_hash": path_item.order_hash if hasattr(path_item, 'order_hash') else 0
+            })
+
+        order_fee_json = {
+            "trade_fee": serialize_fixed_fee(sor_ctx.order_fee.trade_fee)[1],
+            'router_fee': serialize_fixed_fee(sor_ctx.order_fee.router_fee)[1],
+            'integrator_fee': serialize_fixed_fee(sor_ctx.order_fee.integrator_fee)[1],
+            'apply_to_receipt_amount': sor_ctx.order_fee.apply_to_receipt_amount,
+            'gas_fee': serialize_gas_fee(sor_ctx.order_fee.gas_fee, self._erc_to_decimals)[1],
+        }
+        result = {
+            "path": path_json,
+            "order_fee": order_fee_json,
+            "allow_non_atomic": sor_ctx.allow_non_atomic,
+            "min_receive_amount": str(sor_ctx.min_receive_amount),
+            "max_spend_amount": str(sor_ctx.max_spend_amount),
+            "last_base_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.base_qty,
+                                                               self._erc_to_decimals[sor_ctx.path[-1].ticker.base]),
+            "last_quote_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.quote_qty,
+                                                                self._erc_to_decimals[sor_ctx.path[-1].ticker.quote]),
+        }
+
+        return result
 
     def serialize(self, data: Order):
         result = {
@@ -90,6 +123,8 @@ class SimpleOrderSerializer:
             "fee": {
                 "trade_fee": serialize_fixed_fee(data.fee.trade_fee)[1],
                 'router_fee': serialize_fixed_fee(data.fee.router_fee)[1],
+                'integrator_fee': serialize_fixed_fee(data.fee.integrator_fee)[1],
+                'apply_to_receipt_amount':data.fee.apply_to_receipt_amount,
                 'gas_fee': serialize_gas_fee(data.fee.gas_fee, self._erc_to_decimals)[1],
             },
             "salt": hex(data.salt),
@@ -102,5 +137,9 @@ class SimpleOrderSerializer:
         snip9_data = serialize_snip9_calldata(data.snip9_calldata)
         if snip9_data is not None:
             result['snip9_call'] = snip9_data
+
+        sor = self.sor_context_to_json(order=data)
+        if sor is not None:
+            result['sor'] = sor
 
         return result

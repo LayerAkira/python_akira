@@ -14,8 +14,8 @@ with open(path.join(HERE, 'README.md'), encoding='utf-8') as f:
 
 # This call to setup() does all the work
 setup(
-    name="LayerAkira",
-    version="1.0.0a50",
+    name="LayerAkiraSDK",
+    version="1.0.0a90",
     description="library for interaction with LayerAkira exchange",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -37,7 +37,7 @@ setup(
         "Operating System :: OS Independent"
     ],
     packages=["LayerAkira", "LayerAkira.src", "LayerAkira.src.common", "LayerAkira.executables",
-              "LayerAkira.src.hasher"],
+              "LayerAkira.src.hasher", "LayerAkira.src.sor"],
     include_package_data=True,
     install_requires=[
         'websockets',
@@ -47,6 +47,3 @@ setup(
         'aioconsole>=0.7.0'
     ]
 )
-
-
-# 0x06fdf8d651291a0449846e49b01cebb47ea5d88a77ca846f6a6cdc33e11e4110

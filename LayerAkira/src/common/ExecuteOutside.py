@@ -41,9 +41,12 @@ class ExecuteOutsideCall:
     maker: ContractAddress  # aka signer
     version: str
 
-    def get_multicall(self, allowed_erc: Set[ContractAddress], core: ContractAddress, executor: ContractAddress) -> \
+    def get_multicall(self, allowed_erc: Set[ContractAddress],
+                      core: ContractAddress,
+                      executor: ContractAddress,
+                      snip9: ContractAddress) -> \
             List[Tuple[Optional[Tuple[ContractAddress, Optional[int]]], Optional[str]]]:
-        calls = [format_human_readable_call(call, allowed_erc, core, executor) for call in self.calls]
+        calls = [format_human_readable_call(call, allowed_erc, core, executor, snip9) for call in self.calls]
         if len([call for call in calls if call[0][0] == core]) > 1:
             return [(None, 'Duplicate call to approve executor')]
         return calls
@@ -56,45 +59,66 @@ class OutsideExecutionVersion(Enum):
 
 
 def format_human_readable_call(
-        call: HumanReadableCall, allowed_addresses: Set[ContractAddress],
-        core: ContractAddress,
-        executor: ContractAddress,
+    call: HumanReadableCall,
+    allowed_addresses: Set[ContractAddress],
+    core: ContractAddress,
+    base_trade_executor: ContractAddress,
+    snip9_executor: ContractAddress,
 ) -> Tuple[Optional[Tuple[ContractAddress, Optional[int]]], Optional[str]]:
     # V`to`
-    if call.to not in allowed_addresses and call.to != core:
+    if call.to not in allowed_addresses and call.to != core and call.to != base_trade_executor:
         raise ValueError(f'Address {call.to} is not whitelisted in snip9')
 
     # `selector`
-    if call.selector != "approve" and (call.to == core and call.selector != 'grant_access_to_executor'):
-        raise ValueError(f'Selector {call.selector} is not whitelisted in snip9')
-    if call.to == core:
-        if not (len(call.args) == 0 and len(call.kwargs) == 0):
-            raise ValueError('Grant access to executor have no args')
+    if call.selector == 'grant_access_to_executor':
+        args_len, kwargs_len = len(call.args), len(call.kwargs)
+        if (args_len > 0 and kwargs_len > 0) or (args_len > 1 or kwargs_len > 1) or (args_len == 0 and kwargs_len == 0):
+            raise ValueError('Mismatch in args: `grant_access_to_executor` must have exactly 1 arg (args or kwargs)')
+        granted_for_str = call.args[0] if args_len == 1 else call.kwargs.get('executor', None)
+        if granted_for_str is None:
+            raise ValueError('Missing executor argument in snip9')
+        granted_for = ContractAddress(granted_for_str)
+        if call.to == core:
+            if granted_for != base_trade_executor:
+                raise ValueError('Grant access for core contract only allowed to base_trade_executor')
+        elif call.to == base_trade_executor:
+            if granted_for != snip9_executor:
+                raise ValueError('Grant access for base_trade_executor contract only allowed to snip9_executor')
+        else:
+            raise ValueError(f'grant_access_to_executor cannot be used with {call.to}')
         return (call.to, None), None
 
+    if call.selector != 'approve':
+        raise ValueError(f'Selector {call.selector} is not whitelisted in snip9 for {call.to}')
+
     # mutual exclusivity of `args` and `kwargs`
-    if bool(call.args) == bool(call.kwargs):  # Both defined or both empty
+    if bool(call.args) == bool(call.kwargs):
         raise ValueError('Args and kwargs are exclusive in snip9')
 
     # `args` format
     if call.args:
         if len(call.args) != 2:
-            raise ValueError(f'Approve must have exactly 2 arguments in snip9')
-        recipient, amount = ContractAddress(call.args[0]), call.args[1]
-        if isinstance(amount, str):
-            amount = int(amount, 16 if amount.startswith('0x') else 10)
-    elif len(call.kwargs) != 2:
-        raise ValueError(f'Approve must have exactly 2 arguments in snip9')
+            raise ValueError('Approve must have exactly 2 arguments in snip9')
+        recipient_str, amount_str = call.args
     else:
-        recipient, amount = ContractAddress(call.kwargs.get('recipient', 0)), call.kwargs.get('amount', '0')
-        if isinstance(amount, str):
-            amount = int(amount, 16 if amount.startswith('0x') else 10)
+        if len(call.kwargs) != 2:
+            raise ValueError('Approve must have exactly 2 arguments in snip9')
+        recipient_str = call.kwargs.get('recipient', '0')
+        amount_str = call.kwargs.get('amount', '0')
 
-    if recipient != executor:
-        raise ValueError(f'Approve recipient is not exchange {executor}')
+    recipient = ContractAddress(recipient_str)
+    if isinstance(amount_str, str):
+        amount = int(amount_str, 16 if amount_str.startswith('0x') else 10)
+    else:
+        amount = amount_str
+
+    if recipient != base_trade_executor:
+        raise ValueError(f'Approve recipient is not exchange {base_trade_executor}')
     if amount == 0:
-        raise ValueError(f'Amount cannot be 0 in snip9')
+        raise ValueError('Amount cannot be 0 in snip9')
+
     return (call.to, amount), None
+
 
 
 def stp_enum_value(stp) -> dict:

@@ -16,7 +16,7 @@ from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.Requests import Withdraw
 from LayerAkira.src.common.StarknetEntities import AccountExecutor, StarknetSmartContract
 from LayerAkira.src.common.common import Result
-from LayerAkira.src.abi import core_abi, router_abi, executor_abi
+from LayerAkira.src.abi import core_abi, router_abi, executor_abi, snip9_abi
 
 T = TypeVar("T")
 
@@ -38,6 +38,7 @@ class AkiraExchangeClient:
                  core_address: ContractAddress,
                  executor_address: ContractAddress,
                  router_address: ContractAddress,
+                 snip9_address: ContractAddress,
                  erc_to_addr: Dict[ERC20Token, ContractAddress],
                  account_executor: AccountExecutor = None):
         self.client = client
@@ -45,11 +46,15 @@ class AkiraExchangeClient:
         self.core_address = core_address
         self.executor_address = executor_address
         self.router_address = router_address
+        self.snip9_address = snip9_address
         self.core = StarknetSmartContract(Contract(self.core_address.as_int(), core_abi, self.client, cairo_version=1))
         self.router = StarknetSmartContract(
             Contract(self.router_address.as_int(), router_abi, self.client, cairo_version=1))
         self.executor = StarknetSmartContract(
             Contract(self.executor_address.as_int(), executor_abi, self.client, cairo_version=1))
+
+        self.snip9 = StarknetSmartContract(
+            Contract(self.snip9_address.as_int(), snip9_abi, self.client, cairo_version=1))
 
         if account_executor is None:
             self._account_executor = AccountExecutor(client)
@@ -60,7 +65,7 @@ class AkiraExchangeClient:
         self._name_to_deser: Dict[int, Dict[Any]] = defaultdict(lambda: {})
 
     async def init(self):
-        for contract in [self.core.contract, self.router.contract, self.executor.contract]:
+        for contract in [self.core.contract, self.router.contract, self.executor.contract, self.snip9.contract]:
             addr = contract.address
             if hasattr(contract.data.parsed_abi, 'interfaces'):
                 for v in contract.data.parsed_abi.interfaces.values():
