@@ -65,7 +65,10 @@ OrderMatcherResult = str
 class Snapshot:
     table: Table
     msg_id: int
+    pair: TradedPair = None
     time: int = 0
+    msg_ids_start: int = 0
+    msg_ids_end: int = 0
 
 
 @dataclass
@@ -120,7 +123,8 @@ class FailProcessingReport:
     report_type: str
     req_hash: int
     entity_hash: int
-    error_code_orderbook:Optional[str]
+    error_code_orderbook: Optional[str]
+
 
 @dataclass
 class TxHashRollupReport:
@@ -142,6 +146,7 @@ class BBO:
     bid: Optional[TableLevel]
     ask: Optional[TableLevel]
     ts: int
+    pair: TradedPair = None
 
 
 #
@@ -151,3 +156,4 @@ class Trade:
     base_qty: int
     is_sell_side: bool
     time: int
+    pair: TradedPair = None

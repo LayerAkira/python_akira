@@ -22,6 +22,7 @@ from LayerAkira.src.common.common import precise_to_price_convert
 from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
 from LayerAkira.src.common.Requests import SpotTicker
+from LayerAkira.src.sor.SorCLI import SorCLI
 
 
 def GAS_FEE_ACTION(gas: int, fix_steps):
@@ -41,6 +42,7 @@ class CLIConfig:
     core_address: ContractAddress
     executor_address: ContractAddress
     router_address: ContractAddress
+    snip9_address: ContractAddress
     invoker_address: ContractAddress
     http: str
     wss: str
@@ -71,6 +73,7 @@ def parse_cli_cfg(file_path: str):
     return CLIConfig(data['node_url'], ContractAddress(data['core_address']),
                      ContractAddress(data['executor_address']),
                      ContractAddress(data['router_address']),
+                     ContractAddress(data['snip9_address']),
                      ContractAddress(data['invoker_address']),
                      data['http'], data['wss'], tokens,
                      StarknetChainId.SEPOLIA if data['is_testnet']
@@ -96,18 +99,22 @@ class CLIClient:
 
     def __init__(self, cli_cfg_path: str):
         self.cli_cfg = parse_cli_cfg(cli_cfg_path)
+        self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
+        self.sor_cli = SorCLI(self._erc_to_decimals)
 
     async def start(self, domain):
         node_client = FullNodeClient(node_url=self.cli_cfg.node)
         erc_to_addr = {token.symbol: token.address for token in self.cli_cfg.tokens}
-        contract_client = AkiraExchangeClient(node_client, self.cli_cfg.core_address,
-                                              self.cli_cfg.executor_address, self.cli_cfg.router_address,
+        contract_client = AkiraExchangeClient(node_client,
+                                              self.cli_cfg.core_address,
+                                              self.cli_cfg.executor_address,
+                                              self.cli_cfg.router_address,
+                                              self.cli_cfg.snip9_address,
                                               erc_to_addr)
         await contract_client.init()
 
         sn_hasher = SnTypedPedersenHasher(erc_to_addr, domain, self.cli_cfg.core_address,
                                           self.cli_cfg.executor_address)
-        self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
         api_client = AsyncApiHttpClient(sn_hasher, lambda msg_hash, pk: message_signature(msg_hash, pk),
                                         self._erc_to_decimals, self.cli_cfg.http,
                                         verbose=self.cli_cfg.verbose)
@@ -167,11 +174,15 @@ class CLIClient:
             ['subscribe_snaps', ['snap', 'AETH', 'AUSDC', '0']],
             ['subscribe_fills', [self.cli_cfg.trading_account[0]]],
 
+
+
             # ['place_order', ['AETH/AUSDC', '3000', '0', '0.175000', 'SELL', 'LIMIT', '1', '0', '0', 'ROUTER', '0', 'INTERNAL', '0', 'F_FEE_ON_SPEND', 'STRK']],
             #
             # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'ANY']],
             # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'NOT_ANY']],
 
+            # ['place_sor_taker_order', ['strk_p', '500', '0.2', '1.0', '100.0']],
+            # ['place_sor_taker_order', ['test_p02', '2', '3000', '1.0001', '6000']],
 
             #
             # ['approve_exchange', ['STRK', '1000']],
@@ -245,7 +256,13 @@ class CLIClient:
         if command.startswith('sleep'):
             return await asyncio.sleep(5)
 
-        if command.startswith('query_gas'):
+        elif command.startswith('list_sor_paths'):
+            return self.sor_cli.list_sor_paths()
+
+        elif command.startswith('place_sor_taker_order'):
+            return await self.sor_cli.place_sor_taker_order(client, trading_account, args, gas_fee_steps)
+
+        elif command.startswith('query_gas'):
             return await client.query_gas_price(trading_account)
 
         elif command.startswith('set_account'):

@@ -11,7 +11,6 @@ from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.net.models import StarknetChainId
 from starknet_py.net.signer.stark_curve_signer import KeyPair
 
-from LayerAkira.src.AccountClient import AccountClient
 from LayerAkira.src.AkiraExchangeClient import AkiraExchangeClient
 from LayerAkira.src.ERC20Client import ERC20Client
 from LayerAkira.src.HttpClient import AsyncApiHttpClient
@@ -19,7 +18,7 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, HumanReadableCall
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
-from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall
+from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall, SorContext
 from LayerAkira.src.common.Requests import Withdraw, Order, OrderFlags, STPMode, Quantity, Constraints, SpotTicker
 from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, Snapshot, UserInfo, BBO
 from LayerAkira.src.common.TradedPair import TradedPair
@@ -96,7 +95,6 @@ class JointHttpClient:
 
         self._trading_acc_to_user_info: Dict[ContractAddress, UserInfo] = defaultdict(
             lambda: UserInfo(0, defaultdict(lambda: (0, 0)), defaultdict(lambda: (0, 0))))
-
 
         self._router_pk = router_pk
         self._verbose = verbose
@@ -383,6 +381,7 @@ class JointHttpClient:
                           apply_fixed_fees_to_receipt=True,
                           snip_9: bool = False,
                           caller: Optional[ContractAddress] = None,
+                          sor_context: Optional[SorContext] = None,
                           ) -> \
             Result[str]:
         info = self._trading_acc_to_user_info[acc]
@@ -395,15 +394,16 @@ class JointHttpClient:
             order_flags=order_flags, ticker=ticker,
             fee=OrderFee(
                 FixedFee(self.fee_recipient, *info.fees[ticker],
-                         apply_fixed_fees_to_receipt),
+                         ),
                 FixedFee(ZERO_ADDRESS, 0, 0,
-                         apply_fixed_fees_to_receipt) if router_fee is None else router_fee,
-                gas_fee, ), nonce=info.nonce if info.nonce is not None else 0,
+                         ) if router_fee is None else router_fee,
+                gas_fee,
+                apply_to_receipt_amount=apply_fixed_fees_to_receipt), nonce=info.nonce if info.nonce is not None else 0,
             base_asset=10 ** self._token_to_decimals[ticker.base],
             router_signer=router_signer if router_signer is not None else ZERO_ADDRESS,
-            stp=stp, min_receive_amount=min_receive_amount, snip_9=snip_9
+            stp=stp, min_receive_amount=min_receive_amount, snip_9=snip_9,
+            sor_context=sor_context
         )
-
         if order.data is None:
             logging.warning(f'Failed to spawn order {order}')
             return order
@@ -470,11 +470,13 @@ class JointHttpClient:
                       random_int(),
                       kwargs['order_flags'],
                       (1, 1), (0, 0),
-                      sign_scheme=sign_scheme
-
+                      sign_scheme=sign_scheme,
+                      sor_ctx=kwargs['sor_context'],
                       )
+
+        order.sor_ctx.order_fee = order.fee
         if order.is_passive_order():
-            order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0, order.fee.router_fee.apply_to_receipt_amount)
+            order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0)
             order.router_signer = ZERO_ADDRESS
 
         # router taker through router, if not explicitly specified
@@ -528,10 +530,17 @@ class JointHttpClient:
         spending_token = order.ticker.base if order.side == 'SELL' else order.ticker.quote
 
         if spending_token == order.ticker.base:
-            spending_amount = int(order.qty.base_qty)
+            if order.qty.base_qty == 0:
+                qty = (order.qty.quote_qty * self._token_to_decimals[order.ticker.base]) / order.price
+                spending_amount = int(qty)
+            else:
+                spending_amount = int(order.qty.base_qty)
         else:
-            qty = (order.qty.base_qty * order.price) / self._token_to_decimals[order.ticker.base]
-            spending_amount = int(qty)
+            if order.qty.base_qty == 0:
+                spending_amount = int(order.qty.quote_qty)
+            else:
+                qty = (order.qty.base_qty * order.price) / self._token_to_decimals[order.ticker.base]
+                spending_amount = int(qty)
 
         erc_address = self._tokens_to_addr[spending_token]
 
@@ -539,7 +548,7 @@ class JointHttpClient:
             to=erc_address,
             selector=APPROVE_SELECTOR,
             args=[self._executor_address.as_str(), hex(spending_amount)],
-            kwargs={}
+            kwargs=None
         )
 
         calls.append(approve_call)
