@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional, List, Union, Tuple, Callable
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from starknet_py.utils.typed_data import TypedData
 
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
@@ -46,6 +46,7 @@ class AsyncApiHttpClient:
                  sign_cb: Callable[[int, int], Tuple[int, int]],
                  erc_to_decimals: Dict[ERC20Token, int],
                  exchange_http_host='http://localhost:8080',
+                 http_client_timeout=ClientTimeout(total=2 * 60),
                  verbose=False):
         """
 
@@ -54,7 +55,7 @@ class AsyncApiHttpClient:
         :param exchange_http_host:
         :param verbose:
         """
-        self._http = ClientSession()
+        self._http = ClientSession(timeout=http_client_timeout)
         self._http_host = exchange_http_host
         self._hasher: SnTypedPedersenHasher = sn_hasher
         self._erc_to_decimals = erc_to_decimals
@@ -81,7 +82,7 @@ class AsyncApiHttpClient:
         return gas_px
 
     async def get_conversion_rate(self, token: ERC20Token, jwt: str) -> Result[Tuple[int, int]]:
-        rate = await self._get_query(f'{self._http_host}/info/conversion_rate?token={token.value}', jwt)
+        rate = await self._get_query(f'{self._http_host}/info/conversion_rate?token={token}', jwt)
         if rate.data is not None:
             rate.data = (precise_to_price_convert(rate.data[0], self._erc_to_decimals[ERC20Token.STRK]),
                          precise_to_price_convert(rate.data[1], self._erc_to_decimals[token]))
