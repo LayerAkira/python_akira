@@ -1,7 +1,10 @@
+from typing import Dict
+
+from starknet_py.hash.selector import get_selector_from_name
 from starknet_py.serialization import Uint256Serializer
 
 from LayerAkira.src.common.ContractAddress import ContractAddress
-from LayerAkira.src.common.Requests import Order, IncreaseNonce, CancelRequest, Withdraw
+from LayerAkira.src.common.Requests import Order, IncreaseNonce, CancelRequest, Withdraw, Snip9OrderMatch
 from LayerAkira.src.hasher.types import cancel_all_onchain_type, order_type, cancel_type, cancel_all_type, withdraw_type
 
 u256_serde = Uint256Serializer()
@@ -127,3 +130,108 @@ def withdraw_typed_data(withdraw: Withdraw, erc_to_addr, domain, exchange: Contr
             'exchange': exchange.as_str(),
             'sign_scheme': withdraw.sign_scheme.value
         }}
+
+
+
+def execute_outside_call_typed_data(snip9: Snip9OrderMatch, domain,
+                                    snip12_revision: str) -> Dict:
+    outside_execution = snip9.outside_execute
+    if snip12_revision in ['2', 'v2']:  # Active revision
+        message = {
+            "Caller": outside_execution.caller.as_str(),
+            "Nonce": hex(outside_execution.nonce),
+            "Execute After": outside_execution.execute_after,
+            "Execute Before": outside_execution.execute_before,
+            "Calls": [
+                {
+                    "To": hex(call.to),
+                    "Selector": hex(call.selector),
+                    "Calldata": [hex(data) for data in call.calldata],
+                }
+                for call in snip9.approves + [snip9.place_order]
+            ]
+        }
+        types = {
+            "StarknetDomain": [
+                {"name": "name", "type": "shortstring"},
+                {"name": "version", "type": "shortstring"},
+                {"name": "chainId", "type": "shortstring"},
+                {"name": "revision", "type": "shortstring"},
+            ],
+            "OutsideExecution": [
+                {"name": "Caller", "type": "ContractAddress"},
+                {"name": "Nonce", "type": "felt"},
+                {"name": "Execute After", "type": "u128"},
+                {"name": "Execute Before", "type": "u128"},
+                {"name": "Calls", "type": "Call*"},
+            ],
+            "Call": [
+                {"name": "To", "type": "ContractAddress"},
+                {"name": "Selector", "type": "selector"},
+                {"name": "Calldata", "type": "felt*"},
+            ]
+        }
+    else:  # Legacy revision
+        message = {
+            "caller": outside_execution.caller.as_str(),
+            "nonce": hex(outside_execution.nonce),
+            "execute_after": outside_execution.execute_after,
+            "execute_before": outside_execution.execute_before,
+            "calls_len": len(outside_execution.calls) + 1,  # +1 for place call
+            "calls": [
+                {
+                    "to": hex(call.to),
+                    "selector": hex(call.selector),
+                    "calldata_len": len(call.calldata),
+                    "calldata": [hex(data) for data in call.calldata],
+                }
+                for call in snip9.approves + [snip9.place_order]
+            ]
+        }
+        types = {
+            "StarkNetDomain": [
+                {"name": "name", "type": "felt"},
+                {"name": "version", "type": "felt"},
+                {"name": "chainId", "type": "felt"},
+            ],
+            "OutsideExecution": [
+                {"name": "caller", "type": "felt"},
+                {"name": "nonce", "type": "felt"},
+                {"name": "execute_after", "type": "felt"},
+                {"name": "execute_before", "type": "felt"},
+                {"name": "calls_len", "type": "felt"},
+                {"name": "calls", "type": "OutsideCall*"},
+            ],
+            "OutsideCall": [
+                {"name": "to", "type": "felt"},
+                {"name": "selector", "type": "felt"},
+                {"name": "calldata_len", "type": "felt"},
+                {"name": "calldata", "type": "felt*"},
+            ]
+        }
+
+    return {
+        "domain": {
+            "name": "Account.execute_from_outside",
+            "version": snip9.outside_execute.version if snip12_revision in ['2', 'v2'] else '1',
+            "chainId": hex(domain.chain_id) if snip12_revision in ['2', 'v2'] else hex(domain.chain_id),
+            **({"revision": "1"} if snip12_revision in ['2', 'v2'] else {})
+        },
+        "types": types,
+        "primaryType": "OutsideExecution",
+        "message": message
+    }
+
+
+
+def get_event_selector(name: str):
+    """
+    example:
+            DepositEvent: deposit_component::Event,
+
+    outer selector will be DepositEvent, inner (second) will be how it is defined in component: Deposit
+    @param name:
+    @return:
+    """
+    return get_selector_from_name(name)
+

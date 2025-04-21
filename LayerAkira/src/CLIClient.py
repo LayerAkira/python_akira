@@ -19,6 +19,7 @@ from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import GasFee
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import precise_to_price_convert
+from LayerAkira.src.common.constants import SNIP_9_ANY_CALLER
 from LayerAkira.src.hasher.Hasher import SnTypedPedersenHasher
 from LayerAkira.src.common.Requests import SpotTicker
 
@@ -40,6 +41,7 @@ class CLIConfig:
     core_address: ContractAddress
     executor_address: ContractAddress
     router_address: ContractAddress
+    invoker_address: ContractAddress
     http: str
     wss: str
     tokens: List[ERC20Spec]
@@ -48,6 +50,7 @@ class CLIConfig:
     gas_multiplier: float
     verbose: bool
     trading_account: Tuple[ContractAddress, ContractAddress, str]
+    router_pk: Optional[str] = None
 
 
 def parse_cli_cfg(file_path: str):
@@ -68,10 +71,12 @@ def parse_cli_cfg(file_path: str):
     return CLIConfig(data['node_url'], ContractAddress(data['core_address']),
                      ContractAddress(data['executor_address']),
                      ContractAddress(data['router_address']),
+                     ContractAddress(data['invoker_address']),
                      data['http'], data['wss'], tokens,
                      StarknetChainId.SEPOLIA if data['is_testnet']
                      else StarknetChainId.MAINNET, steps,
-                     data['gas_oracle_skew_multiplier'], data['verbose'], (acc, pub, pk))
+                     data['gas_oracle_skew_multiplier'], data['verbose'], (acc, pub, pk),
+                     data.get('router_pk'))
 
 
 class CLIClient:
@@ -104,15 +109,18 @@ class CLIClient:
                                           self.cli_cfg.executor_address)
         self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
         api_client = AsyncApiHttpClient(sn_hasher, lambda msg_hash, pk: message_signature(msg_hash, pk),
-                                        self._erc_to_decimals, self.cli_cfg.http, self.cli_cfg.verbose)
+                                        self._erc_to_decimals, self.cli_cfg.http,
+                                        verbose=self.cli_cfg.verbose)
 
         self.exchange_client = JointHttpClient(node_client, api_client, contract_client,
                                                self.cli_cfg.core_address,
                                                self.cli_cfg.executor_address,
+                                               self.cli_cfg.invoker_address,
                                                erc_to_addr,
                                                self._erc_to_decimals,
                                                self.cli_cfg.chain_id,
                                                self.cli_cfg.gas_multiplier,
+                                               self.cli_cfg.router_pk,
                                                verbose=self.cli_cfg.verbose)
 
         await self.exchange_client.init()
@@ -128,6 +136,11 @@ class CLIClient:
                 print(await ws.subscribe_fills(ContractAddress(args[0]), sub_consumer))
                 return True
             elif command == 'subscribe_book':
+                print(await ws.subscribe_book(Stream(args[0]), TradedPair(ERC20Token(args[1]), ERC20Token(args[2])),
+                                              bool(int(args[3])),
+                                              sub_consumer))
+                return True
+            elif command == 'subscribe_snaps':
                 print(await ws.subscribe_book(Stream(args[0]), TradedPair(ERC20Token(args[1]), ERC20Token(args[2])),
                                               bool(int(args[3])),
                                               sub_consumer))
@@ -151,8 +164,15 @@ class CLIClient:
             ['sleep', []],
             ['subscribe_book', ['trade', 'ETH', 'USDC', '1']],
             ['subscribe_book', ['bbo', 'ETH', 'USDC', '1']],
-            ['subscribe_book', ['snap', 'ETH', 'USDC', '1']],
+            ['subscribe_snaps', ['snap', 'AETH', 'AUSDC', '0']],
             ['subscribe_fills', [self.cli_cfg.trading_account[0]]],
+
+            # ['place_order', ['AETH/AUSDC', '3000', '0', '0.175000', 'SELL', 'LIMIT', '1', '0', '0', 'ROUTER', '0', 'INTERNAL', '0', 'F_FEE_ON_SPEND', 'STRK']],
+            #
+            # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'ANY']],
+            # ['place_snip9_taker_order', ['AETH/AUSDC', '3000', '0.001', 'BUY', 'NOT_ANY']],
+
+
             #
             # ['approve_exchange', ['STRK', '1000']],
             # ['approve_exchange', ['USDC', '10000000000000']],
@@ -184,6 +204,15 @@ class CLIClient:
             #   '0']],
 
         ]
+
+        # presets_commands.extend(
+        #     [
+        #         ['place_order',
+        #          ['AETH/AUSDC', str(3000 + i), '0', '1', 'SELL', 'LIMIT', '1', '0', '0', 'ROUTER', '0', 'INTERNAL', '0',
+        #           'F_FEE_ON_SPEND', 'STRK']]
+        #         for i in range(35)
+        #     ]
+        # )
 
         for command, args in presets_commands:
             try:
@@ -267,8 +296,11 @@ class CLIClient:
         elif command.startswith('get_orders'):
             return await client.get_orders(trading_account, int(args[0]), int(args[1]), int(args[2]))
 
+        elif command.startswith('get_order_router'):
+            return await client.get_order_router(trading_account, ContractAddress(args[0]), int(args[1], 16 if args[1].startswith('0x') else 10), int(args[2]))
+
         elif command.startswith('get_order'):
-            return await client.get_order(trading_account, int(args[0], 16 if args[0].startswith('0x') else 10))
+            return await client.get_order(trading_account, int(args[0], 16 if args[0].startswith('0x') else 10), int(args[1]))
 
         elif command.startswith('get_bbo'):
             b, q = args[0].split('/')
@@ -308,6 +340,39 @@ class CLIClient:
                                             stp=int(stp), external_funds=external,
                                             min_receive_amount=min_receive_amount,
                                             apply_fixed_fees_to_receipt=apply_to_receipt_amount
+                                            )
+
+        elif command.startswith('place_snip9_taker_order'):
+            ticker, px, qty_base, side, is_any_caller = args
+            min_receive_amount = str("0")
+            base, quote = ticker.split('/')
+            base, quote = ERC20Token(base), ERC20Token(quote)
+            ecosystem = False
+            external = True
+            caller = SNIP_9_ANY_CALLER if is_any_caller == "ANY" else ContractAddress("0x04f25E6190081D2dAa7cDf3D1aB2Ce216Fe9e93456083E6D29D69b62AD915Db6")
+            px = precise_to_price_convert(px, self._erc_to_decimals[quote])
+            qty_base = precise_to_price_convert(qty_base, self._erc_to_decimals[base])
+            qty_quote = precise_to_price_convert("0", self._erc_to_decimals[quote])
+            min_receive_amount = precise_to_price_convert(min_receive_amount,
+                                                          self._erc_to_decimals[base] if side == 'BUY'
+                                                          else self._erc_to_decimals[quote])
+            apply_to_receipt_amount = True
+            gas_token = base if side == 'BUY' else quote
+            if gas_token != ERC20Token.STRK:
+                rate = await client.get_conversion_rate(trading_account, gas_token)
+                fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
+            else:
+                fee = GAS_FEE_ACTION(client.gas_price, gas_fee_steps['swap'][ecosystem])
+            return await client.place_order(trading_account, TradedPair(base, quote),
+                                            px, qty_base, qty_quote, side, "MARKET",
+                                            False, False, False,
+                                            ecosystem, trading_account,
+                                            fee,
+                                            stp=0, external_funds=external,
+                                            min_receive_amount=min_receive_amount,
+                                            apply_fixed_fees_to_receipt=apply_to_receipt_amount,
+                                            snip_9=True,
+                                            caller=caller
                                             )
 
         elif command.startswith('cancel_order'):
