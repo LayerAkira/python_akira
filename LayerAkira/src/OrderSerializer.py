@@ -15,7 +15,7 @@ def serialize_fixed_fee(fee: FixedFee) -> Tuple[
     }
 
 
-def serialize_gas_fee(gas_fee: GasFee, erc_to_decimals, base_token: ERC20Token = ERC20Token.STRK) -> Tuple[
+def serialize_gas_fee(gas_fee: GasFee, erc_to_decimals, base_token: ERC20Token = ERC20Token("STRK")) -> Tuple[
     bool, Union[Dict, str]]:
     return True, {
         "gas_per_action": gas_fee.gas_per_action,
@@ -61,7 +61,7 @@ class SimpleOrderSerializer:
         for path_item in sor_ctx.path:
             path_json.append({
                 "price": precise_from_price_to_str_convert(path_item.price, self._erc_to_decimals[path_item.ticker.quote]),
-                "ticker": [path_item.ticker.base.value, path_item.ticker.quote.value],
+                "ticker": [path_item.ticker.base, path_item.ticker.quote],
                 "is_sell_side": path_item.is_sell_side,
                 "order_hash": path_item.order_hash if hasattr(path_item, 'order_hash') else 0
             })

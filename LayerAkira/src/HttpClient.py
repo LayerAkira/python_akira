@@ -84,7 +84,7 @@ class AsyncApiHttpClient:
     async def get_conversion_rate(self, token: ERC20Token, jwt: str) -> Result[Tuple[int, int]]:
         rate = await self._get_query(f'{self._http_host}/info/conversion_rate?token={token}', jwt)
         if rate.data is not None:
-            rate.data = (precise_to_price_convert(rate.data[0], self._erc_to_decimals[ERC20Token.STRK]),
+            rate.data = (precise_to_price_convert(rate.data[0], self._erc_to_decimals[ERC20Token("STRK")]),
                          precise_to_price_convert(rate.data[1], self._erc_to_decimals[token]))
 
         return rate

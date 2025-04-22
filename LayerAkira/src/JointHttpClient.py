@@ -198,7 +198,7 @@ class JointHttpClient:
             return None
         amount = precise_to_price_convert(amount, self._token_to_decimals[token])
         w = Withdraw(acc_addr, token, amount, random_int(), (0, 0),
-                     GasFee(w_steps.data, ERC20Token.ETH, 2 * gas_price.data, (1, 1)),
+                     GasFee(w_steps.data, ERC20Token("ETH"), 2 * gas_price.data, (1, 1)),
                      ## onchain requires x2 gas
                      acc_addr, SignScheme.NOT_SPECIFIED)
 
