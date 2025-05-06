@@ -163,7 +163,7 @@ class WsClient:
         self._idx += 1
         req = {
             'action': 'subscribe', 'id': self._idx,
-            'stream': stream.value, 'ticker': {'base': traded_pair.base.value, 'quote': traded_pair.quote.value,
+            'stream': stream.value, 'ticker': {'base': traded_pair.base, 'quote': traded_pair.quote,
                                                'ecosystem_book': ecosystem_book}}
         stream_id = (hash((stream.value, hash(traded_pair), ecosystem_book)))
         return await self._subscribe(cb, req, stream_id, self._idx)

@@ -15,7 +15,7 @@ def serialize_fixed_fee(fee: FixedFee) -> Tuple[
     }
 
 
-def serialize_gas_fee(gas_fee: GasFee, erc_to_decimals, base_token: ERC20Token = ERC20Token.STRK) -> Tuple[
+def serialize_gas_fee(gas_fee: GasFee, erc_to_decimals, base_token: ERC20Token = ERC20Token("STRK")) -> Tuple[
     bool, Union[Dict, str]]:
     return True, {
         "gas_per_action": gas_fee.gas_per_action,
@@ -56,12 +56,14 @@ class SimpleOrderSerializer:
             return None
 
         sor_ctx = order.sor_ctx
+        receive_token = sor_ctx.end_token()
+        spend_token = order.ticker.base if order.flags.is_sell_side else order.ticker.quote
 
         path_json = []
         for path_item in sor_ctx.path:
             path_json.append({
                 "price": precise_from_price_to_str_convert(path_item.price, self._erc_to_decimals[path_item.ticker.quote]),
-                "ticker": [path_item.ticker.base.value, path_item.ticker.quote.value],
+                "ticker": [path_item.ticker.base, path_item.ticker.quote],
                 "is_sell_side": path_item.is_sell_side,
                 "order_hash": path_item.order_hash if hasattr(path_item, 'order_hash') else 0
             })
@@ -77,8 +79,10 @@ class SimpleOrderSerializer:
             "path": path_json,
             "order_fee": order_fee_json,
             "allow_non_atomic": sor_ctx.allow_non_atomic,
-            "min_receive_amount": str(sor_ctx.min_receive_amount),
-            "max_spend_amount": str(sor_ctx.max_spend_amount),
+            "min_receive_amount": precise_from_price_to_str_convert(sor_ctx.min_receive_amount,
+                                                                    self._erc_to_decimals[receive_token]),
+            "max_spend_amount": precise_from_price_to_str_convert(sor_ctx.max_spend_amount,
+                                                                  self._erc_to_decimals[spend_token]),
             "last_base_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.base_qty,
                                                                self._erc_to_decimals[sor_ctx.path[-1].ticker.base]),
             "last_quote_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.quote_qty,

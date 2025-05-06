@@ -198,7 +198,7 @@ class JointHttpClient:
             return None
         amount = precise_to_price_convert(amount, self._token_to_decimals[token])
         w = Withdraw(acc_addr, token, amount, random_int(), (0, 0),
-                     GasFee(w_steps.data, ERC20Token.ETH, 2 * gas_price.data, (1, 1)),
+                     GasFee(w_steps.data, ERC20Token("ETH"), 2 * gas_price.data, (1, 1)),
                      ## onchain requires x2 gas
                      acc_addr, SignScheme.NOT_SPECIFIED)
 
@@ -228,14 +228,14 @@ class JointHttpClient:
             return False
         print('Balances:')
         for k, v in self._addr_to_erc_balances[acc_addr].items():
-            print(f'{k.name}:{v}')
+            print(f'{k}:{v}')
         print('Approve:')
         for k, v in self._addr_to_erc_approve[acc_addr].items():
-            print(f'{k.name}:{v}')
+            print(f'{k}:{v}')
         nonce, balances, signer = self._addr_to_exchange_balances_and_nonce_and_signer[acc_addr]
         print(f'Balances on exchange: (nonce is {nonce}, signer is {signer})')
         for k, v in balances.items():
-            print(f'{k.name}:{v}')
+            print(f'{k}:{v}')
         return True
 
     async def approve_exchange(self, acc_addr: ContractAddress, token: ERC20Token, amount: str):
@@ -332,7 +332,7 @@ class JointHttpClient:
 
         if self._verbose:
             logging.info(f'Acc {acc}, nonce {result.data.nonce}, '
-                         f'balances: {[token.name + ":" + str(b[0]) + "," + str(b[1]) for token, b in result.data.balances.items()]},'
+                         f'balances: {[token + ":" + str(b[0]) + "," + str(b[1]) for token, b in result.data.balances.items()]},'
                          f', fees:{[str(p) + ":" + str(b) for p, b in result.data.fees.items()]}')
         return result
 

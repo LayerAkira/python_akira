@@ -32,32 +32,32 @@ SOR_PATHS = {
         name="strk_circle",
         description="STRK -> AUSDC -> AUSDT",
         pairs=[
-            SorPair(ERC20Token.STRK, ERC20Token.AUSDC, ERC20Token.STRK, ERC20Token.AUSDC),
-            SorPair(ERC20Token.AUSDC, ERC20Token.AUSDT, ERC20Token.AUSDC, ERC20Token.AUSDT)
+            SorPair(ERC20Token("STRK"), ERC20Token("AUSDC"), ERC20Token("STRK"), ERC20Token("AUSDC")),
+            SorPair(ERC20Token("AUSDC"), ERC20Token("AUSDT"), ERC20Token("AUSDC"), ERC20Token("AUSDT"))
         ]
     ),
     "eth_p": SorPath(
         name="eth_circle",
         description="ETH -> AUSDC -> AUSDT",
         pairs=[
-            SorPair(ERC20Token.ETH, ERC20Token.AUSDC, ERC20Token.ETH, ERC20Token.AUSDC),
-            SorPair(ERC20Token.AUSDC, ERC20Token.AUSDT, ERC20Token.AUSDC, ERC20Token.AUSDT)
+            SorPair(ERC20Token("ETH"), ERC20Token("AUSDC"), ERC20Token("ETH"), ERC20Token("AUSDC")),
+            SorPair(ERC20Token("AUSDC"), ERC20Token("AUSDT"), ERC20Token("AUSDC"), ERC20Token("AUSDT"))
         ]
     ),
     "test_p": SorPath(
         name="test_circle",
         description="AUSDC -> AETH -> AUSDT",
         pairs=[
-            SorPair(ERC20Token.AUSDC, ERC20Token.AETH, ERC20Token.AETH, ERC20Token.AUSDC),
-            SorPair(ERC20Token.AETH, ERC20Token.AUSDT, ERC20Token.AETH, ERC20Token.AUSDT)
+            SorPair(ERC20Token("AUSDC"), ERC20Token("AETH"), ERC20Token("AETH"), ERC20Token("AUSDC")),
+            SorPair(ERC20Token("AETH"), ERC20Token("AUSDT"), ERC20Token("AETH"), ERC20Token("AUSDT"))
         ]
     ),
     "test_p02": SorPath(
         name="test02_circle",
         description="AETH -> AUSDC -> AUSDT",
         pairs=[
-            SorPair(ERC20Token.AETH, ERC20Token.AUSDC, ERC20Token.AETH, ERC20Token.AUSDC),
-            SorPair(ERC20Token.AUSDC, ERC20Token.AUSDT, ERC20Token.AUSDC, ERC20Token.AUSDT)
+            SorPair(ERC20Token("AETH"), ERC20Token("AUSDC"), ERC20Token("AETH"), ERC20Token("AUSDC")),
+            SorPair(ERC20Token("AUSDC"), ERC20Token("AUSDT"), ERC20Token("AUSDC"), ERC20Token("AUSDT"))
         ]
     )
 }
@@ -195,8 +195,8 @@ class SorCLI:
         min_receive_amount = 0
 
         apply_to_receipt_amount = False
-        gas_token = ERC20Token.STRK
-        if gas_token != ERC20Token.STRK:
+        gas_token = ERC20Token("STRK")
+        if gas_token != ERC20Token("STRK"):
             rate = await client.get_conversion_rate(trading_account, gas_token)
             fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
         else:

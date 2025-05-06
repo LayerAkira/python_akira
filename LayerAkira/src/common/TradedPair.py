@@ -9,4 +9,4 @@ class TradedPair:
     quote: ERC20Token
 
     def __hash__(self):
-        return hash((self.base.value, self.quote.value))
+        return hash((self.base, self.quote))

@@ -26,7 +26,7 @@ from LayerAkira.src.sor.SorCLI import SorCLI
 
 
 def GAS_FEE_ACTION(gas: int, fix_steps):
-    return GasFee(fix_steps, ERC20Token.STRK, gas, (1, 1))
+    return GasFee(fix_steps, ERC20Token("STRK"), gas, (1, 1))
 
 
 @dataclass
@@ -344,7 +344,7 @@ class CLIClient:
                                                           else self._erc_to_decimals[quote])
             apply_to_receipt_amount = False if apply_to_receipt_amount.strip() == 'F_FEE_ON_SPEND' else True
             gas_token = ERC20Token(gas_token)
-            if gas_token != ERC20Token.STRK:
+            if gas_token != ERC20Token("STRK"):
                 rate = await client.get_conversion_rate(trading_account, gas_token)
                 fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
             else:
@@ -375,7 +375,7 @@ class CLIClient:
                                                           else self._erc_to_decimals[quote])
             apply_to_receipt_amount = True
             gas_token = base if side == 'BUY' else quote
-            if gas_token != ERC20Token.STRK:
+            if gas_token != ERC20Token("STRK"):
                 rate = await client.get_conversion_rate(trading_account, gas_token)
                 fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
             else:
