@@ -89,7 +89,8 @@ class AsyncApiHttpClient:
 
         return rate
 
-    async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, active:int = 1, mode: int = 1) -> Result[
+    async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, active: int = 1, mode: int = 1) -> \
+    Result[
         Union[OrderInfo, ReducedOrderInfo]]:
         """
 
@@ -104,16 +105,15 @@ class AsyncApiHttpClient:
         if resp.data is None: return resp
         return Result(self._parse_order_response(resp.data, mode))
 
-
-    async def get_order_router(self, acc: ContractAddress, jwt: str, t_acc: ContractAddress, order_hash: int, active:int = 1, mode: int = 1) -> Result[
+    async def get_order_router(self, acc: ContractAddress, jwt: str, t_acc: ContractAddress, order_hash: int,
+                               active: int = 1, mode: int = 1) -> Result[
         Union[OrderInfo, ReducedOrderInfo]]:
         url = f'{self._http_host}/user/order_router?order_hash={order_hash}&trading_account={t_acc}&mode={mode}&active={active}'
         resp = await self._get_query(url, jwt)
         if resp.data is None: return resp
         return Result(self._parse_order_response(resp.data, mode))
 
-
-    async def get_orders(self, acc: ContractAddress, jwt: str, mode: int = 1, limit=20, offset=0, is_active = True) -> \
+    async def get_orders(self, acc: ContractAddress, jwt: str, mode: int = 1, limit=20, offset=0, is_active=True) -> \
             Result[List[Union[ReducedOrderInfo, OrderInfo]]]:
         url = f'{self._http_host}/user/orders?mode={mode}&trading_account={acc}&limit={limit}&offset={offset}&is_active={bool(is_active)}'
         resp = await self._get_query(url, jwt)
@@ -150,7 +150,8 @@ class AsyncApiHttpClient:
             int(levels['msg_id']))
         )
 
-    async def increase_nonce(self, pk: str, jwt: str, maker: ContractAddress, new_nonce: int, gas_fee: GasFee, sign_scheme:SignScheme):
+    async def increase_nonce(self, pk: str, jwt: str, maker: ContractAddress, new_nonce: int, gas_fee: GasFee,
+                             sign_scheme: SignScheme):
         req = IncreaseNonce(maker, new_nonce, gas_fee, random_int(), (0, 0), sign_scheme)
         req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
         data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign],
@@ -160,7 +161,8 @@ class AsyncApiHttpClient:
                 }
         return await self._post_query(f'{self._http_host}/increase_nonce', data, jwt)
 
-    async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: int, sign_scheme:SignScheme) -> Result[int]:
+    async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: int, sign_scheme: SignScheme) -> \
+    Result[int]:
         """
         :param sign_scheme:
         :param pk: private key of signer for trading account
@@ -173,11 +175,13 @@ class AsyncApiHttpClient:
         req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
         return await self._post_query(
             f'{self._http_host}/cancel_order',
-            {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': hex(order_hash), 'salt': hex(req.salt),
-             'ticker': {'base': '0x0', 'quote': '0x0', 'to_ecosystem_book': True},'sign_scheme':sign_scheme.value
+            {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': hex(order_hash),
+             'salt': hex(req.salt),
+             'ticker': {'base': '0x0', 'quote': '0x0', 'to_ecosystem_book': True}, 'sign_scheme': sign_scheme.value
              }, jwt)
 
-    async def cancel_all_orders(self, pk: str, jwt: str, maker: ContractAddress, ticker: SpotTicker,sign_scheme:SignScheme) -> Result[int]:
+    async def cancel_all_orders(self, pk: str, jwt: str, maker: ContractAddress, ticker: SpotTicker,
+                                sign_scheme: SignScheme) -> Result[int]:
         """
         :param sign_scheme:
         :param pk: private key of signer for trading account
@@ -214,6 +218,10 @@ class AsyncApiHttpClient:
 
     async def place_order(self, jwt: str, order: Order) -> Result[str]:
         return await self._post_query(f'{self._http_host}/place_order', self._order_serder.serialize(order), jwt)
+
+    async def sign_external_order(self, jwt: str, order: Order) -> Result[str]:
+        return await self._post_query(f'{self._http_host}/router/sign_external_order',
+                                      self._order_serder.serialize(order), jwt)
 
     async def query_router_details(self, jwt: str) -> Result[RouterDetails]:
         """

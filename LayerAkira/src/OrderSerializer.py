@@ -56,6 +56,8 @@ class SimpleOrderSerializer:
             return None
 
         sor_ctx = order.sor_ctx
+        receive_token = sor_ctx.end_token()
+        spend_token = order.ticker.base if order.flags.is_sell_side else order.ticker.quote
 
         path_json = []
         for path_item in sor_ctx.path:
@@ -77,8 +79,10 @@ class SimpleOrderSerializer:
             "path": path_json,
             "order_fee": order_fee_json,
             "allow_non_atomic": sor_ctx.allow_non_atomic,
-            "min_receive_amount": str(sor_ctx.min_receive_amount),
-            "max_spend_amount": str(sor_ctx.max_spend_amount),
+            "min_receive_amount": precise_from_price_to_str_convert(sor_ctx.min_receive_amount,
+                                                                    self._erc_to_decimals[receive_token]),
+            "max_spend_amount": precise_from_price_to_str_convert(sor_ctx.max_spend_amount,
+                                                                  self._erc_to_decimals[spend_token]),
             "last_base_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.base_qty,
                                                                self._erc_to_decimals[sor_ctx.path[-1].ticker.base]),
             "last_quote_qty": precise_from_price_to_str_convert(sor_ctx.last_qty.quote_qty,
