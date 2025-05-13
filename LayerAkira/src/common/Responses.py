@@ -93,6 +93,11 @@ class ReducedOrderInfo:
     expiration_time: int
     source: str
 
+@dataclass
+class SorExecData:
+    leftovers: Dict[ERC20Token, str]
+    receive_token:ERC20Token
+    fill_receive_qty: int
 
 @dataclass
 class ExecReport:
@@ -108,6 +113,8 @@ class ExecReport:
     status: OrderStatus
     mather_result: OrderMatcherResult
     taker_source: Optional[str]
+    routing:str # NATIVE
+    sor:Optional[SorExecData]
 
 
 @dataclass
