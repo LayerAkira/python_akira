@@ -225,7 +225,7 @@ class WsClient:
                         precise_to_price_convert(x[0], q_decimals),
                         precise_to_price_convert(x[1], b_decimals),
                         x[2]) for x in d['asks']]), int(d['msg_id']), pair,
-                d['time'], d.get('msg_ids_start', 0), d.get('msg_ids_end', 0)
+                d['time'], int(d.get('msg_ids_start', "0")), int(d.get('msg_ids_end', "0"))
             )
         elif stream == Stream.TRADE:
             return Trade(precise_to_price_convert(d['price'], q_decimals),
