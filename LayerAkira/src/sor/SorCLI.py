@@ -36,11 +36,11 @@ SOR_PATHS = {
             SorPair(ERC20Token("AUSDC"), ERC20Token("AUSDT"), ERC20Token("AUSDC"), ERC20Token("AUSDT"))
         ]
     ),
-    "eth_p": SorPath(
-        name="eth_circle",
-        description="ETH -> AUSDC -> AUSDT",
+    "aeth_p": SorPath(
+        name="aeth_circle",
+        description="AETH -> AUSDC -> AUSDT",
         pairs=[
-            SorPair(ERC20Token("ETH"), ERC20Token("AUSDC"), ERC20Token("ETH"), ERC20Token("AUSDC")),
+            SorPair(ERC20Token("AETH"), ERC20Token("AUSDC"), ERC20Token("AETH"), ERC20Token("AUSDC")),
             SorPair(ERC20Token("AUSDC"), ERC20Token("AUSDT"), ERC20Token("AUSDC"), ERC20Token("AUSDT"))
         ]
     ),

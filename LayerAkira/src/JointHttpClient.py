@@ -473,8 +473,8 @@ class JointHttpClient:
                       sign_scheme=sign_scheme,
                       sor_ctx=kwargs['sor_context'],
                       )
-
-        order.sor_ctx.order_fee = order.fee
+        if order.sor_ctx is not None:
+            order.sor_ctx.order_fee = order.fee
         if order.is_passive_order():
             order.fee.router_fee = FixedFee(ZERO_ADDRESS, 0, 0)
             order.router_signer = ZERO_ADDRESS
