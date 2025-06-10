@@ -12,7 +12,7 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.Responses import TableLevel, BBO, Snapshot, Table, Trade, ExecReport, OrderStatus, \
-    OrderMatcherResult, CancelAllReport, FailProcessingReport, TxHashRollupReport
+    OrderMatcherResult, CancelAllReport, FailProcessingReport, TxHashRollupReport, SorExecData
 from LayerAkira.src.common.common import precise_to_price_convert
 
 
@@ -235,6 +235,15 @@ class WsClient:
         elif stream == Stream.FILLS:
             try:
                 if 'hash' in d:
+                    def parse_sor(d):
+                        if d is None: return None
+                        receive_token = d['receive_token']
+                        return SorExecData(
+                            d['leftovers'],
+                            receive_token,
+                            precise_to_price_convert(d['fill_receive_qty'], self._erc_to_decimals[receive_token]),
+                        )
+
                     return ExecReport(ContractAddress(data['client']), pair,
                                       precise_to_price_convert(d['fill_price'], q_decimals),
                                       precise_to_price_convert(d['fill_base_qty'], b_decimals),
@@ -245,7 +254,9 @@ class WsClient:
                                       d['is_sell_side'],
                                       OrderStatus(d['status']),
                                       OrderMatcherResult(d['matcher_result']),
-                                      d.get('source', None)
+                                      d.get('source', None),
+                                      d['routing'],
+                                      parse_sor(d.get('sor', None))
                                       )
                 elif 'report_type' in d:
                     return FailProcessingReport(ContractAddress(data['client']), d['report_type'],
