@@ -289,7 +289,10 @@ class CLIClient:
             return await client.refresh_onchain_balances_and_nonce_and_signer(trading_account)
 
         elif command.startswith('request_withdraw_on_chain'):
-            res = await client.request_withdraw_on_chain(trading_account, ERC20Token(args[0]), args[1])
+            res = await client.request_withdraw_on_chain(
+                trading_account, ERC20Token(args[0]), args[1],
+                GAS_FEE_ACTION(client.gas_price * 2, gas_fee_steps['onchain_withdraw'][True])
+            )
             if res is None: return
             await wait_tx_receipt(res[1])
             return res[0]

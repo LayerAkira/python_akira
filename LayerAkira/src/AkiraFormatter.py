@@ -22,6 +22,7 @@ class AkiraFormatter:
                 'salt': withdraw.salt,
                 'gas_fee': self._prepare_gas_fee(withdraw.gas_fee),
                 'receiver': withdraw.receiver.as_int(),
+                'sign_scheme': withdraw.sign_scheme.value
             },
             'sign': (withdraw.sign[0], withdraw.sign[1])
         }

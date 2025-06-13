@@ -175,7 +175,7 @@ class JointHttpClient:
                                                                   None, False)
         if not is_succ:
             logging.warning(f'Failed to simulate {result}')
-            return None
+            raise result
 
         is_succ, result = await self.akira.apply_onchain_withdraw(account, token, key,
                                                                   result.fee_estimation.to_resource_bounds(),
@@ -188,19 +188,20 @@ class JointHttpClient:
             logging.warning(f'Failed to sent tx due {result}')
             return None
 
-    async def request_withdraw_on_chain(self, acc_addr: ContractAddress, token: ERC20Token, amount: str) -> Optional[
+    async def request_withdraw_on_chain(self, acc_addr: ContractAddress, token: ERC20Token, amount: str,
+                                        gas_fee: GasFee) -> Optional[
         Tuple[str, str]]:
         account = self._address_to_account[acc_addr]
         w_steps = await self.akira.get_withdraw_steps()
-        gas_price = await self.akira.get_latest_gas_price()
         if w_steps.data is None or w_steps.data is None:
-            logging.warning(f'Failed to get w_steps and gas_price due {w_steps} {gas_price}')
+            logging.warning(f'Failed to get w_steps and gas_price due {w_steps}')
             return None
         amount = precise_to_price_convert(amount, self._token_to_decimals[token])
         w = Withdraw(acc_addr, token, amount, random_int(), (0, 0),
-                     GasFee(w_steps.data, ERC20Token("ETH"), 2 * gas_price.data, (1, 1)),
                      ## onchain requires x2 gas
-                     acc_addr, SignScheme.NOT_SPECIFIED)
+                     gas_fee,
+                     acc_addr,
+                     sign_scheme=SignScheme.NOT_SPECIFIED)
 
         if self._verbose:
             logging.info(f'Withdraw hash {hex(self._hasher.hash(w))}')
@@ -210,7 +211,7 @@ class JointHttpClient:
                                                                     None, False)
         if not is_succ:
             logging.warning(f'Failed to simulate {result}')
-            return
+            raise result
 
         is_succ, result = await self.akira.request_onchain_withdraw(account, w,
                                                                     result.fee_estimation.to_resource_bounds(),
