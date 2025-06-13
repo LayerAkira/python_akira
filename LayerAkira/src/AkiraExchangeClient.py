@@ -168,6 +168,9 @@ class AkiraExchangeClient:
         call = self.core.prepare_calldata('request_onchain_withdraw', self._formatter.prepare_withdraw(w)['withdraw'])
         return await self._common(call, account, max_fee, nonce, on_succ_send)
 
+    async def get_pending_withdraw(self, maker:ContractAddress, token: ContractAddress, block='latest'):
+        return await self._call(self.core, 'get_pending_withdraw', block, maker.as_int(), token.as_int())
+
     async def apply_onchain_withdraw(self, account: Account, token: ERC20Token, key: int,
                                      max_fee: ResourceBoundsMapping,
                                      nonce=None,
