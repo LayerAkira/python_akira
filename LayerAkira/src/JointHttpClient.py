@@ -528,7 +528,7 @@ class JointHttpClient:
 
         calls = []
 
-        spending_token = order.ticker.base if order.side == 'SELL' else order.ticker.quote
+        spending_token = order.ticker.base if order.side == Side.SELL else order.ticker.quote
 
         if spending_token == order.ticker.base:
             if order.qty.base_qty == 0:

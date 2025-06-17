@@ -122,7 +122,7 @@ class SorCLI:
         return SorContext(
             path=path_info,
             order_fee=None,
-            allow_non_atomic=True,
+            allow_non_atomic=False,
             min_receive_amount=min_receive_amount,
             max_spend_amount=0,
             last_qty=Quantity(b, q, 10 ** self._token_to_decimals[bt])
