@@ -18,7 +18,7 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.ExecuteOutside import OutsideExecutionVersion, HumanReadableCall
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
-from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall, SorContext
+from LayerAkira.src.common.Requests import SignScheme, ExecuteOutsideCall, SorContext, Side
 from LayerAkira.src.common.Requests import Withdraw, Order, OrderFlags, STPMode, Quantity, Constraints, SpotTicker
 from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, Snapshot, UserInfo, BBO
 from LayerAkira.src.common.TradedPair import TradedPair
@@ -548,7 +548,7 @@ class JointHttpClient:
         approve_call = HumanReadableCall(
             to=erc_address,
             selector=APPROVE_SELECTOR,
-            args=[self._executor_address.as_str(), hex(spending_amount)],
+            args=[self._executor_address.as_str(), hex(spending_amount * 2)],
             kwargs=None
         )
 

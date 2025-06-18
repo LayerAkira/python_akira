@@ -161,8 +161,13 @@ class SorCLI:
         path_info = await self._create_path_info(path, prices)
         
         # Get fee parameters
+        first_ticker = TradedPair(first_pair.base_token, first_pair.quote_token)
+
+        side = "SELL" if first_pair.token_in == first_pair.base_token else "BUY"
+
         (ecosystem, external,
          min_receive_amount, apply_to_receipt_amount, gas_fee) = await self._prepare_taker_order_params(
+            first_ticker, side,
             client, trading_account, gas_fee_steps)
         
         # Create SOR context
@@ -170,10 +175,10 @@ class SorCLI:
             path_info[1:], last_pair, last_token, last_qty_value, min_receive_amount)
 
         return await client.place_order(trading_account,
-                                        TradedPair(first_pair.base_token, first_pair.quote_token),
+                                        first_ticker,
                                         path_info[0].price,
                                         lb, lq,
-                                        "SELL" if first_pair.token_in == first_pair.base_token else "BUY",
+                                        side,
                                         "MARKET",
                                         False, True, False,
                                         ecosystem,
@@ -188,14 +193,15 @@ class SorCLI:
                                         sor_context=sor_context
                                         )
 
-    async def _prepare_taker_order_params(self, client: JointHttpClient, trading_account: ContractAddress,
+    async def _prepare_taker_order_params(self, token: TradedPair, side,
+                                          client: JointHttpClient, trading_account: ContractAddress,
                                         gas_fee_steps: Dict[str, Dict[bool, int]]) -> Tuple:
         ecosystem = False
         external = True
         min_receive_amount = 0
 
         apply_to_receipt_amount = False
-        gas_token = ERC20Token("STRK")
+        gas_token = token.base if side == 'BUY' else token.quote
         if gas_token != ERC20Token("STRK"):
             rate = await client.get_conversion_rate(trading_account, gas_token)
             fee = GasFee(gas_fee_steps['swap'][ecosystem], gas_token, client.gas_price, rate.data)
