@@ -254,3 +254,12 @@ class Snip9OrderMatch:
     approves: List[Call]
     place_order: Call
     outside_execute: ExecuteOutsideCall
+
+
+@dataclass
+class TickerSpec:
+    ticker: TradedPair
+    is_ecosystem_book: bool
+    raw_price_increment: int
+    raw_min_quote_qty: int
+    raw_quote_increment: int

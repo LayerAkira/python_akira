@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Optional, List, Union, Tuple, Callable
+from typing import Dict, Optional, List, Union, Tuple, Callable, Any
 
 from aiohttp import ClientSession, ClientTimeout
 from starknet_py.utils.typed_data import TypedData
@@ -10,7 +10,7 @@ from LayerAkira.src.common.ContractAddress import ContractAddress
 from LayerAkira.src.common.ERC20Token import ERC20Token
 from LayerAkira.src.common.FeeTypes import GasFee, FixedFee, OrderFee
 from LayerAkira.src.common.Requests import Withdraw, Order, CancelRequest, OrderFlags, STPMode, IncreaseNonce, Quantity, \
-    Constraints, SpotTicker, SignScheme
+    Constraints, SpotTicker, SignScheme, TickerSpec
 from LayerAkira.src.common.TradedPair import TradedPair
 from LayerAkira.src.common.common import random_int, precise_to_price_convert, precise_from_price_to_str_convert
 from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, TableLevel, Snapshot, Table, RouterDetails, \
@@ -80,6 +80,11 @@ class AsyncApiHttpClient:
         gas_px = await self._get_query(f'{self._http_host}/gas/price', jwt)
         if gas_px.data is not None: gas_px.data = int(gas_px.data)
         return gas_px
+
+    async def query_tickers_specs(self, jwt: str) -> Result[int]:
+        ticker_specs = await self._get_query(f'{self._http_host}/info/ticker_specifications', jwt)
+        if ticker_specs.data is not None: ticker_specs.data = self._parse_tickers_specs_response(ticker_specs.data)
+        return ticker_specs
 
     async def get_conversion_rate(self, token: ERC20Token, jwt: str) -> Result[Tuple[int, int]]:
         rate = await self._get_query(f'{self._http_host}/info/conversion_rate?token={token}', jwt)
@@ -336,3 +341,42 @@ class AsyncApiHttpClient:
                 ),
                 state_info
             )
+
+    def _parse_tickers_specs_response(self, d: list[Any]) -> Dict[TradedPair, Dict[bool, TickerSpec]]:
+            payload = d
+
+            result: Dict[Tuple[TradedPair, bool], TickerSpec] = {}
+
+            for item in payload:
+                try:
+                    ticker_info = item["ticker"]
+                    pair_info = ticker_info["pair"]
+
+                    base_sym = pair_info["base"]
+                    quote_sym = pair_info["quote"]
+
+                    base_token = ERC20Token(base_sym)
+                    quote_token = ERC20Token(quote_sym)
+
+                    pair = TradedPair(base=base_token, quote=quote_token)
+                    is_ecosystem = bool(ticker_info.get("isEcosystemBook", False))
+
+                    ticker_spec = TickerSpec(
+                        ticker=pair,
+                        is_ecosystem_book=is_ecosystem,
+                        raw_price_increment=int(item["rawPriceIncrement"]),
+                        raw_min_quote_qty=int(item["rawMinQuoteQty"]),
+                        raw_quote_increment=int(item["rawQuoteQtyIncrement"]),
+                    )
+
+                    pair_dict = result.setdefault(pair, {})
+                    pair_dict[is_ecosystem] = ticker_spec
+
+                except (KeyError, ValueError) as exc:
+                    raise ValueError(f"Malformed ticker spec entry: {item}") from exc
+
+            return result
+
+
+
+
