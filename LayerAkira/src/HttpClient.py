@@ -186,8 +186,9 @@ class AsyncApiHttpClient:
              }, jwt)
 
     async def cancel_all_orders(self, pk: str, jwt: str, maker: ContractAddress, ticker: SpotTicker,
-                                sign_scheme: SignScheme) -> Result[int]:
+                                sign_scheme: SignScheme, fast_sign_key: Optional[str]=None) -> Result[int]:
         """
+        :param fast_sign_key:
         :param sign_scheme:
         :param pk: private key of signer for trading account
         :param jwt: jwt token
@@ -197,13 +198,17 @@ class AsyncApiHttpClient:
         """
         req = CancelRequest(maker, None, ticker, random_int(), (0, 0), sign_scheme)
         req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
-        return await self._post_query(
-            f'{self._http_host}/cancel_all',
-            {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': 0, 'salt': hex(req.salt),
+        data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': 0, 'salt': hex(req.salt),
              'ticker': {'base': ticker.pair.base, 'quote': ticker.pair.quote,
                         'to_ecosystem_book': ticker.is_ecosystem_book},
              'sign_scheme': sign_scheme.value
-             }, jwt)
+             }
+        if fast_sign_key is not None:
+            data['fast_sign_key'] = fast_sign_key
+        return await self._post_query(
+            f'{self._http_host}/cancel_all',
+            data
+            , jwt)
 
     async def withdraw(self, pk: str, jwt: str, maker: ContractAddress, token: ERC20Token, amount: int,
                        gas_fee: GasFee) -> Result[int]:
@@ -220,6 +225,9 @@ class AsyncApiHttpClient:
 
     async def query_listen_key(self, jwt: str) -> Result[str]:
         return await self._get_query(f'{self._http_host}/user/listen_key', jwt)
+
+    async def query_fast_sign_key(self, jwt: str) -> Result[str]:
+        return await self._get_query(f'{self._http_host}/user/fast_sign_key', jwt)
 
     async def place_order(self, jwt: str, order: Order) -> Result[str]:
         return await self._post_query(f'{self._http_host}/place_order', self._order_serder.serialize(order), jwt)
