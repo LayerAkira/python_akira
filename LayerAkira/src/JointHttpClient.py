@@ -455,7 +455,9 @@ class JointHttpClient:
 
     async def query_fast_sign_key(self, acc: ContractAddress):
         jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
-        return await self._api_client.query_fast_sign_key(jwt)
+        signer = ContractAddress(self._address_to_account[acc].signer.public_key)
+        pk = self._signer_key_to_pk[signer]
+        return await self._api_client.query_fast_sign_key(jwt, pk, acc, self._chain.value)
 
     async def _spawn_order(self, acc: ContractAddress, **kwargs) -> Result[Order]:
         signer_pub_key = ContractAddress(self._address_to_account[acc].signer.public_key)

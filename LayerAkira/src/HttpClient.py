@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Dict, Optional, List, Union, Tuple, Callable, Any
 
@@ -19,12 +20,20 @@ from LayerAkira.src.common.Responses import ReducedOrderInfo, OrderInfo, TableLe
 from LayerAkira.src.common.common import Result
 
 
-def get_typed_data(message: int, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
+def get_typed_data(message: int, chain_id: int, name="LayerAkira Exchange", version="0.0.1",
+                   fg: bool = False):
     challenge = (
         'Sign in to LayerAkira',
         "\tChallenge:",
         hex(message)
     )
+    if fg:
+        challenge = (
+            'Fast sign LayerAkira',
+            "\tChallenge:",
+            hex(message)
+        )
+
     return TypedData.from_dict(
         {"domain": {"name": name, "version": version, "chainId": hex(chain_id)},
          "types": {
@@ -35,6 +44,9 @@ def get_typed_data(message: int, chain_id: int, name="LayerAkira Exchange", vers
                          {"name": "exchange", "type": "string"}],
          }, "primaryType": "Message",
          "message": {'welcome': challenge[0], 'to': challenge[1], 'exchange': challenge[2]}})
+
+def get_fast_sign_typed_data(message: int, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
+    return get_typed_data(message, chain_id, name, version, True)
 
 
 class AsyncApiHttpClient:
@@ -226,8 +238,17 @@ class AsyncApiHttpClient:
     async def query_listen_key(self, jwt: str) -> Result[str]:
         return await self._get_query(f'{self._http_host}/user/listen_key', jwt)
 
-    async def query_fast_sign_key(self, jwt: str) -> Result[str]:
-        return await self._get_query(f'{self._http_host}/user/fast_sign_key', jwt)
+    async def query_fast_sign_key(self, jwt: str, pk: str, account: ContractAddress, chain_id: int) -> Result[str]:
+
+        url = f'{self._http_host}/sign/request_fast_sign_key'
+        msg = await self._get_query(url, jwt)
+        if msg.data is None: return msg
+
+        url = f'{self._http_host}/sign/issue_fast_sign_key'
+        msg_hash = get_fast_sign_typed_data(int(msg.data), chain_id).message_hash(account.as_int())
+        return await self._post_query(url, {'msg': msg.data,
+                                            'signature': [hex(x) for x in list(self._sign_cb(msg_hash, int(pk, 16)))]},
+                                      jwt)
 
     async def place_order(self, jwt: str, order: Order) -> Result[str]:
         return await self._post_query(f'{self._http_host}/place_order', self._order_serder.serialize(order), jwt)
@@ -270,7 +291,13 @@ class AsyncApiHttpClient:
     async def _get_query(self, url, jwt: Optional[str] = None):
         if self._verbose: logging.info(f'GET {url}')
         res = await self._http.get(url, headers={'Authorization': jwt} if jwt is not None else {})
-        if self._verbose: logging.info(f'Response {await res.json()} {res.status}')
+        try:
+            if self._verbose:
+                logging.info(f'Response {await res.json()} {res.status}')
+
+        except json.decoder.JSONDecodeError:
+            logging.error(f'failed decode Response {res}')
+            raise
         resp = await res.json()
         if 'result' in resp: return Result(resp['result'])
         return Result(None, resp['code'], resp['error'])
@@ -278,7 +305,13 @@ class AsyncApiHttpClient:
     async def _post_query(self, url, data, jwt: Optional[str] = None):
         if self._verbose: logging.info(f'POST {url} and data {data}')
         res = await self._http.post(url, json=data, headers={'Authorization': jwt} if jwt is not None else {})
-        if self._verbose: logging.info(f'Response {await res.json()} {res.status}')
+        try:
+            if self._verbose:
+                logging.info(f'Response {await res.json()} {res.status}')
+
+        except json.decoder.JSONDecodeError:
+            logging.error(f'failed decode Response {res}')
+            raise
         resp = await res.json()
         if 'result' in resp: return Result(resp['result'])
         return Result(None, resp['code'], resp['error'])
