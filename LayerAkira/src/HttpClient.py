@@ -22,19 +22,12 @@ from LayerAkira.src.common.common import Result
 EXP_TIME_HOURS = 1
 
 
-def get_typed_data(message: str, chain_id: int, name="LayerAkira Exchange", version="0.0.1",
-                   fg: bool = False):
+def get_typed_data(message: str, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
     challenge = (
         'Sign in to LayerAkira',
         "\tChallenge:",
         message
     )
-    if fg:
-        challenge = (
-            'Fast sign LayerAkira',
-            "\tChallenge:",
-            message
-        )
 
     d = {"domain": {"name": name, "version": version, "chainId": hex(chain_id)},
          "types": {
@@ -45,13 +38,31 @@ def get_typed_data(message: str, chain_id: int, name="LayerAkira Exchange", vers
                          {"name": "exchange", "type": "string"}],
          }, "primaryType": "Message",
          "message": {'welcome': challenge[0], 'to': challenge[1], 'exchange': challenge[2]}}
-    if fg:
-        d["message"]["warning"] = f'valid for {EXP_TIME_HOURS} h'
 
     return TypedData.from_dict(d)
 
-def get_fast_sign_typed_data(message: str, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
-    return get_typed_data(message, chain_id, name, version, True)
+def get_fast_sign_typed_data(message: dict, chain_id: int, name="LayerAkira Exchange", version="0.0.1"):
+    challenge = (
+        'Fast sign LayerAkira',
+        "\tChallenge:",
+        message['msg']
+    )
+
+    d = {"domain": {"name": name, "version": version, "chainId": hex(chain_id)},
+         "types": {
+             "StarkNetDomain": [{"name": "name", "type": "felt"},
+                                {"name": "version", "type": "felt"}, {"name": "chainId", "type": "felt"}],
+             "Message": [{"name": "welcome", "type": "string"},
+                         {"name": "to", "type": "string"},
+                         {"name": "exchange", "type": "string"}],
+         }, "primaryType": "Message",
+         "message": {'welcome': challenge[0], 'to': challenge[1], 'exchange': challenge[2]}}
+
+    d["message"]["warning"] = f'valid for {EXP_TIME_HOURS} h'
+    d["message"]["expiration"] = f'expiration ts {message["expiration_ts"]}'
+
+
+    return TypedData.from_dict(d)
 
 
 class AsyncApiHttpClient:
@@ -89,7 +100,7 @@ class AsyncApiHttpClient:
         if msg.data is None: return msg
 
         url = f'{self._http_host}/sign/auth'
-        msg_hash = get_typed_data(int(msg.data), chain_id).message_hash(account.as_int())
+        msg_hash = get_typed_data(msg.data, chain_id).message_hash(account.as_int())
         return await self._post_query(url, {'msg': msg.data,
                                             'signature': [hex(x) for x in list(self._sign_cb(msg_hash, int(pk, 16)))]})
 
@@ -251,7 +262,7 @@ class AsyncApiHttpClient:
 
         url = f'{self._http_host}/sign/issue_fast_sign_key'
         msg_hash = get_fast_sign_typed_data(msg.data, chain_id).message_hash(account.as_int())
-        return await self._post_query(url, {'msg': msg.data,
+        return await self._post_query(url, {'msg': msg.data['msg'],
                                             'signature': [hex(x) for x in list(self._sign_cb(msg_hash, int(pk, 16)))]},
                                       jwt)
 
