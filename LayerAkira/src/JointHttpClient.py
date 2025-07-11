@@ -430,10 +430,11 @@ class JointHttpClient:
         return await self._api_client.cancel_order(pk, jwt, maker, order_hash, sign_scheme)
 
     async def cancel_all_orders(self, acc: ContractAddress, maker: ContractAddress, ticker: SpotTicker,
-                                sign_scheme=SignScheme.ECDSA) -> Result[int]:
+                                sign_scheme=SignScheme.ECDSA,
+                                fast_sign_key: Optional[str]=None) -> Result[int]:
         jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
         pk = self._signer_key_to_pk[ContractAddress(self._address_to_account[acc].signer.public_key)]
-        return await self._api_client.cancel_all_orders(pk, jwt, maker, ticker, sign_scheme)
+        return await self._api_client.cancel_all_orders(pk, jwt, maker, ticker, sign_scheme, fast_sign_key)
 
     async def increase_nonce(self, acc: ContractAddress, maker: ContractAddress, new_nonce: int, gas_fee: GasFee,
                              sign_scheme=SignScheme.ECDSA) -> \
@@ -451,6 +452,12 @@ class JointHttpClient:
     async def query_listen_key(self, signer: ContractAddress):
         jwt = self._signer_key_to_jwt[signer]
         return await self._api_client.query_listen_key(jwt)
+
+    async def query_fast_sign_key(self, acc: ContractAddress):
+        jwt = self._signer_key_to_jwt[ContractAddress(self._address_to_account[acc].signer.public_key)]
+        signer = ContractAddress(self._address_to_account[acc].signer.public_key)
+        pk = self._signer_key_to_pk[signer]
+        return await self._api_client.query_fast_sign_key(jwt, pk, acc, self._chain.value)
 
     async def _spawn_order(self, acc: ContractAddress, **kwargs) -> Result[Order]:
         signer_pub_key = ContractAddress(self._address_to_account[acc].signer.public_key)
