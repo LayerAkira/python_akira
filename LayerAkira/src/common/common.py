@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import localcontext, Decimal
 from random import random
 from typing import Generic, TypeVar, Optional, Any
 
@@ -10,6 +11,13 @@ class Result(Generic[T]):
     data: T
     error_type: Optional[Any] = None
     error: str = ''
+
+def precise_to_price_convert_02(value: str, decimals: int) -> int:
+    with localcontext() as ctx:
+        need_prec = len(value.replace('.', '').lstrip('-')) + decimals
+        ctx.prec = need_prec
+        res = Decimal(value) * (Decimal(10) ** decimals).normalize()
+        return int(res)
 
 
 def precise_to_price_convert(value: str, decimals: int) -> int:
