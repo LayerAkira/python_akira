@@ -101,6 +101,7 @@ class CLIClient:
         self.cli_cfg = parse_cli_cfg(cli_cfg_path)
         self._erc_to_decimals = {token.symbol: token.decimals for token in self.cli_cfg.tokens}
         self.sor_cli = SorCLI(self._erc_to_decimals)
+        self.fast_sign_key = None
 
     async def start(self, domain):
         node_client = FullNodeClient(node_url=self.cli_cfg.node)
@@ -268,6 +269,10 @@ class CLIClient:
         elif command.startswith('set_account'):
             await client.handle_new_keys(ContractAddress(args[0]), ContractAddress(args[1]), args[2])
 
+        elif command.startswith('fast_sign_key'):
+            self.fast_sign_key = (await client.query_fast_sign_key(trading_account)).data
+            return self.fast_sign_key
+
         elif command.startswith('display_chain_info'):
             return await client.display_chain_info(trading_account)
 
@@ -405,7 +410,8 @@ class CLIClient:
             base, quote = ERC20Token(base), ERC20Token(quote)
             ecosystem = ecosystem == 'ECOSYSTEM'
             return await client.cancel_all_orders(trading_account, trading_account,
-                                                  SpotTicker(TradedPair(base, quote), ecosystem))
+                                                  SpotTicker(TradedPair(base, quote), ecosystem),
+                                                  fast_sign_key=self.fast_sign_key)
 
         elif command.startswith('increase_nonce'):
             return await client.increase_nonce(trading_account, trading_account, int(args[0]),
