@@ -255,7 +255,7 @@ class WsClient:
                                       OrderStatus(d['status']),
                                       OrderMatcherResult(d['matcher_result']),
                                       d.get('source', None),
-                                      d['routing'],
+                                      d.get('routing'),
                                       parse_sor(d.get('sor', None))
                                       )
                 elif 'report_type' in d:
