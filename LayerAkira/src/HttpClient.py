@@ -54,13 +54,15 @@ def get_fast_sign_typed_data(message: dict, chain_id: int, name="LayerAkira Exch
                                 {"name": "version", "type": "felt"}, {"name": "chainId", "type": "felt"}],
              "Message": [{"name": "welcome", "type": "string"},
                          {"name": "to", "type": "string"},
-                         {"name": "exchange", "type": "string"}],
+                         {"name": "exchange", "type": "string"},
+                         {"name": "warning", "type": "string"},
+                         {"name": "expiration", "type": "string"},
+                         ],
          }, "primaryType": "Message",
          "message": {'welcome': challenge[0], 'to': challenge[1], 'exchange': challenge[2]}}
 
     d["message"]["warning"] = f'valid for {EXP_TIME_HOURS} h'
     d["message"]["expiration"] = f'expiration ts {message["expiration_ts"]}'
-
 
     return TypedData.from_dict(d)
 
@@ -123,8 +125,8 @@ class AsyncApiHttpClient:
         return rate
 
     async def get_order(self, acc: ContractAddress, jwt: str, order_hash: int, active: int = 1, mode: int = 1) -> \
-    Result[
-        Union[OrderInfo, ReducedOrderInfo]]:
+            Result[
+                Union[OrderInfo, ReducedOrderInfo]]:
         """
 
         :param acc:
@@ -195,7 +197,7 @@ class AsyncApiHttpClient:
         return await self._post_query(f'{self._http_host}/increase_nonce', data, jwt)
 
     async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: int, sign_scheme: SignScheme) -> \
-    Result[int]:
+            Result[int]:
         """
         :param sign_scheme:
         :param pk: private key of signer for trading account
@@ -214,7 +216,7 @@ class AsyncApiHttpClient:
              }, jwt)
 
     async def cancel_all_orders(self, pk: str, jwt: str, maker: ContractAddress, ticker: SpotTicker,
-                                sign_scheme: SignScheme, fast_sign_key: Optional[str]=None) -> Result[int]:
+                                sign_scheme: SignScheme, fast_sign_key: Optional[str] = None) -> Result[int]:
         """
         :param fast_sign_key:
         :param sign_scheme:
@@ -227,10 +229,10 @@ class AsyncApiHttpClient:
         req = CancelRequest(maker, None, ticker, random_int(), (0, 0), sign_scheme)
         req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
         data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': 0, 'salt': hex(req.salt),
-             'ticker': {'base': ticker.pair.base, 'quote': ticker.pair.quote,
-                        'to_ecosystem_book': ticker.is_ecosystem_book},
-             'sign_scheme': sign_scheme.value
-             }
+                'ticker': {'base': ticker.pair.base, 'quote': ticker.pair.quote,
+                           'to_ecosystem_book': ticker.is_ecosystem_book},
+                'sign_scheme': sign_scheme.value
+                }
         if fast_sign_key is not None:
             data['fast_sign_key'] = fast_sign_key
         return await self._post_query(
@@ -400,40 +402,36 @@ class AsyncApiHttpClient:
             )
 
     def _parse_tickers_specs_response(self, d: list[Any]) -> Dict[TradedPair, Dict[bool, TickerSpec]]:
-            payload = d
+        payload = d
 
-            result: Dict[Tuple[TradedPair, bool], TickerSpec] = {}
+        result: Dict[Tuple[TradedPair, bool], TickerSpec] = {}
 
-            for item in payload:
-                try:
-                    ticker_info = item["ticker"]
-                    pair_info = ticker_info["pair"]
+        for item in payload:
+            try:
+                ticker_info = item["ticker"]
+                pair_info = ticker_info["pair"]
 
-                    base_sym = pair_info["base"]
-                    quote_sym = pair_info["quote"]
+                base_sym = pair_info["base"]
+                quote_sym = pair_info["quote"]
 
-                    base_token = ERC20Token(base_sym)
-                    quote_token = ERC20Token(quote_sym)
+                base_token = ERC20Token(base_sym)
+                quote_token = ERC20Token(quote_sym)
 
-                    pair = TradedPair(base=base_token, quote=quote_token)
-                    is_ecosystem = bool(ticker_info.get("isEcosystemBook", False))
+                pair = TradedPair(base=base_token, quote=quote_token)
+                is_ecosystem = bool(ticker_info.get("isEcosystemBook", False))
 
-                    ticker_spec = TickerSpec(
-                        ticker=pair,
-                        is_ecosystem_book=is_ecosystem,
-                        raw_price_increment=int(item["rawPriceIncrement"]),
-                        raw_min_quote_qty=int(item["rawMinQuoteQty"]),
-                        raw_quote_increment=int(item["rawQuoteQtyIncrement"]),
-                    )
+                ticker_spec = TickerSpec(
+                    ticker=pair,
+                    is_ecosystem_book=is_ecosystem,
+                    raw_price_increment=int(item["rawPriceIncrement"]),
+                    raw_min_quote_qty=int(item["rawMinQuoteQty"]),
+                    raw_quote_increment=int(item["rawQuoteQtyIncrement"]),
+                )
 
-                    pair_dict = result.setdefault(pair, {})
-                    pair_dict[is_ecosystem] = ticker_spec
+                pair_dict = result.setdefault(pair, {})
+                pair_dict[is_ecosystem] = ticker_spec
 
-                except (KeyError, ValueError) as exc:
-                    raise ValueError(f"Malformed ticker spec entry: {item}") from exc
+            except (KeyError, ValueError) as exc:
+                raise ValueError(f"Malformed ticker spec entry: {item}") from exc
 
-            return result
-
-
-
-
+        return result
