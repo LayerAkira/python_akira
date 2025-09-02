@@ -196,7 +196,8 @@ class AsyncApiHttpClient:
                 }
         return await self._post_query(f'{self._http_host}/increase_nonce', data, jwt)
 
-    async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: int, sign_scheme: SignScheme) -> \
+    async def cancel_order(self, pk: str, jwt: str, maker: ContractAddress, order_hash: int, sign_scheme: SignScheme,
+                           fast_sign_key: Optional[str] = None) -> \
             Result[int]:
         """
         :param sign_scheme:
@@ -207,13 +208,19 @@ class AsyncApiHttpClient:
         :return: poseidon hash of request
         """
         req = CancelRequest(maker, order_hash, None, random_int(), (0, 0), sign_scheme)
-        req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        if fast_sign_key is None:
+            req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        else:
+            req.sign = (0, 0)
+        data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': hex(order_hash),
+                'salt': hex(req.salt),
+                'ticker': {'base': '0x0', 'quote': '0x0', 'to_ecosystem_book': True}, 'sign_scheme': sign_scheme.value
+                }
+        if fast_sign_key is not None:
+            data['fast_sign_key'] = fast_sign_key
+
         return await self._post_query(
-            f'{self._http_host}/cancel_order',
-            {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': hex(order_hash),
-             'salt': hex(req.salt),
-             'ticker': {'base': '0x0', 'quote': '0x0', 'to_ecosystem_book': True}, 'sign_scheme': sign_scheme.value
-             }, jwt)
+            f'{self._http_host}/cancel_order', data, jwt)
 
     async def cancel_all_orders(self, pk: str, jwt: str, maker: ContractAddress, ticker: SpotTicker,
                                 sign_scheme: SignScheme, fast_sign_key: Optional[str] = None) -> Result[int]:
@@ -227,7 +234,10 @@ class AsyncApiHttpClient:
         :return: poseidon hash of request
         """
         req = CancelRequest(maker, None, ticker, random_int(), (0, 0), sign_scheme)
-        req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        if fast_sign_key is None:
+            req.sign = self._sign_cb(self._hasher.hash(req), int(pk, 16))
+        else:
+            req.sign = (0, 0)
         data = {'maker': req.maker.as_str(), 'sign': [hex(x) for x in req.sign], 'order_hash': 0, 'salt': hex(req.salt),
                 'ticker': {'base': ticker.pair.base, 'quote': ticker.pair.quote,
                            'to_ecosystem_book': ticker.is_ecosystem_book},
