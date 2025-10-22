@@ -88,6 +88,7 @@ class SignScheme(str, Enum):
     ECDSA = "ecdsa curve"
     ACCOUNT = "account"
     DIRECT = "direct"
+    WEB_LIMIT_ORDER = "web_limit_order"
     NOT_SPECIFIED = ""
 
 @dataclass
